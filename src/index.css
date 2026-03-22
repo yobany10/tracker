@@ -1,0 +1,40 @@
+body {
+  margin: 0;
+  font-family: "Avenir Next", "Segoe UI Variable", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background:
+    radial-gradient(circle at top left, rgba(124, 166, 109, 0.25), transparent 22%),
+    radial-gradient(circle at bottom right, rgba(216, 176, 117, 0.22), transparent 26%),
+    #f6f3ec;
+  color: #1e3932;
+}
+
+code {
+  font-family: "SFMono-Regular", "Menlo", "Monaco", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a,
+button,
+input,
+select,
+textarea {
+  transition: 160ms ease;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(29, 107, 87, 0.3);
+  outline-offset: 2px;
+}
+
+#root {
+  min-height: 100vh;
+}
