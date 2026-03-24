@@ -9,6 +9,7 @@ import {
     getDocs,
     query,
     serverTimestamp,
+    setDoc,
     updateDoc,
     where
 } from "firebase/firestore";
@@ -190,8 +191,10 @@ const normalizeLogTypePayload = (data = {}) => {
     const name = normalizeText(input.name);
 
     assertRequired(name, "Log type name");
+    assertRequired(input.ownerId, "ownerId");
 
     return removeUndefinedDeep({
+        ownerId: input.ownerId,
         name,
         description: normalizeText(input.description),
         fields: Array.isArray(input.fields)
@@ -309,14 +312,18 @@ export const trackerDoc = (trackerId) => {
     return doc(db, TRACKERS_COLLECTION, trackerId);
 };
 
-export const logTypesCollection = (trackerId) => {
-    assertRequired(trackerId, "trackerId");
-    return collection(db, TRACKERS_COLLECTION, trackerId, LOG_TYPES_COLLECTION);
+export const logTypesCollection = () => {
+    return collection(db, LOG_TYPES_COLLECTION);
 };
 
-export const logTypeDoc = (trackerId, logTypeId) => {
+export const logTypeDoc = (logTypeId) => {
     assertRequired(logTypeId, "logTypeId");
-    return doc(db, TRACKERS_COLLECTION, trackerId, LOG_TYPES_COLLECTION, logTypeId);
+    return doc(db, LOG_TYPES_COLLECTION, logTypeId);
+};
+
+const legacyTrackerLogTypesCollection = (trackerId) => {
+    assertRequired(trackerId, "trackerId");
+    return collection(db, TRACKERS_COLLECTION, trackerId, LOG_TYPES_COLLECTION);
 };
 
 export const logsCollection = (trackerId) => {
@@ -337,36 +344,53 @@ export const listUserTrackers = async (userId) => {
     return listSnapshots(trackersCollection(), [where("ownerId", "==", userId)]);
 };
 
+const migrateLegacyLogTypesForUser = async (userId) => {
+    if (!userId) {
+        return;
+    }
+
+    const [trackers, existingLogTypes] = await Promise.all([
+        listUserTrackers(userId),
+        listSnapshots(logTypesCollection(), [where("ownerId", "==", userId)])
+    ]);
+    const existingLogTypeIds = new Set(existingLogTypes.map((logType) => logType.id));
+
+    for (const tracker of trackers) {
+        const legacyLogTypes = await listSnapshots(legacyTrackerLogTypesCollection(tracker.id));
+
+        for (const legacyLogType of legacyLogTypes) {
+            if (existingLogTypeIds.has(legacyLogType.id)) {
+                continue;
+            }
+
+            const payload = {
+                ...normalizeLogTypePayload({
+                    ...legacyLogType,
+                    ownerId: userId
+                }),
+                dateCreated: legacyLogType.dateCreated || serverTimestamp(),
+                dateUpdated: legacyLogType.dateUpdated || serverTimestamp()
+            };
+
+            await setDoc(logTypeDoc(legacyLogType.id), payload);
+            existingLogTypeIds.add(legacyLogType.id);
+        }
+    }
+};
+
 export const getTracker = async (trackerId) => {
     const snapshot = await getDoc(trackerDoc(trackerId));
     return mapSnapshot(snapshot);
 };
 
 export const createTracker = async (data = {}) => {
-    const input = toPlainObject(data);
-    const logTypes = Array.isArray(input.logTypes) ? input.logTypes : [];
     const payload = {
-        ...normalizeTrackerPayload(input),
+        ...normalizeTrackerPayload(data),
         dateCreated: serverTimestamp(),
         dateUpdated: serverTimestamp()
     };
 
     const trackerRef = await addDoc(trackersCollection(), payload);
-
-    if (logTypes.length > 0) {
-        const createdLogTypeIds = [];
-
-        for (const logType of logTypes) {
-            const logTypeId = await createTrackerLogType(trackerRef.id, logType);
-            createdLogTypeIds.push(logTypeId);
-        }
-
-        if (!payload.defaultLogTypeId && createdLogTypeIds[0]) {
-            await updateTracker(trackerRef.id, {
-                defaultLogTypeId: createdLogTypeIds[0]
-            });
-        }
-    }
 
     return trackerRef.id;
 };
@@ -383,45 +407,42 @@ export const updateTracker = async (trackerId, data = {}) => {
 };
 
 export const deleteTracker = async (trackerId) => {
-    const [existingLogTypes, existingLogs] = await Promise.all([
-        listTrackerLogTypes(trackerId),
-        listTrackerLogs(trackerId)
-    ]);
+    const existingLogs = await listTrackerLogs(trackerId);
 
-    await Promise.all([
-        ...existingLogTypes.map((currentLogType) =>
-            deleteDoc(logTypeDoc(trackerId, currentLogType.id))
-        ),
-        ...existingLogs.map((currentLog) => deleteDoc(logDoc(trackerId, currentLog.id)))
-    ]);
+    await Promise.all(existingLogs.map((currentLog) => deleteDoc(logDoc(trackerId, currentLog.id))));
 
     await deleteDoc(trackerDoc(trackerId));
 };
 
-export const listTrackerLogTypes = async (trackerId) => {
-    return listSnapshots(logTypesCollection(trackerId));
+export const listUserLogTypes = async (userId) => {
+    if (!userId) {
+        return [];
+    }
+
+    await migrateLegacyLogTypesForUser(userId);
+    return listSnapshots(logTypesCollection(), [where("ownerId", "==", userId)]);
 };
 
-export const getTrackerLogType = async (trackerId, logTypeId) => {
-    const snapshot = await getDoc(logTypeDoc(trackerId, logTypeId));
+export const getLogType = async (logTypeId) => {
+    const snapshot = await getDoc(logTypeDoc(logTypeId));
     return mapSnapshot(snapshot);
 };
 
-export const createTrackerLogType = async (trackerId, data = {}) => {
+export const createUserLogType = async (data = {}) => {
     const payload = {
         ...normalizeLogTypePayload(data),
         dateCreated: serverTimestamp(),
         dateUpdated: serverTimestamp()
     };
-    const reference = await addDoc(logTypesCollection(trackerId), payload);
+    const reference = await addDoc(logTypesCollection(), payload);
 
     return reference.id;
 };
 
-export const updateTrackerLogType = async (trackerId, logTypeId, data = {}) => {
+export const updateUserLogType = async (logTypeId, data = {}) => {
     const payload = normalizeLogTypeUpdatePayload(data);
 
-    await updateDoc(logTypeDoc(trackerId, logTypeId), {
+    await updateDoc(logTypeDoc(logTypeId), {
         ...payload,
         dateUpdated: serverTimestamp()
     });
@@ -429,13 +450,16 @@ export const updateTrackerLogType = async (trackerId, logTypeId, data = {}) => {
     return logTypeId;
 };
 
-export const deleteTrackerLogType = async (
-    trackerId,
-    logTypeId,
-    options = {}
-) => {
+export const deleteUserLogType = async (userId, logTypeId, options = {}) => {
     const shouldDeleteAssociatedLogs = Boolean(options.deleteAssociatedLogs);
-    const associatedLogs = await listTrackerLogs(trackerId, { logTypeId });
+    const trackers = await listUserTrackers(userId);
+    const logsByTracker = await Promise.all(
+        trackers.map(async (tracker) => ({
+            trackerId: tracker.id,
+            logs: await listTrackerLogs(tracker.id, { logTypeId })
+        }))
+    );
+    const associatedLogs = logsByTracker.flatMap((entry) => entry.logs);
 
     if (associatedLogs.length > 0 && !shouldDeleteAssociatedLogs) {
         throw new Error(
@@ -445,17 +469,56 @@ export const deleteTrackerLogType = async (
 
     if (shouldDeleteAssociatedLogs) {
         await Promise.all(
-            associatedLogs.map((currentLog) => deleteDoc(logDoc(trackerId, currentLog.id)))
+            logsByTracker.flatMap((entry) =>
+                entry.logs.map((currentLog) => deleteDoc(logDoc(entry.trackerId, currentLog.id)))
+            )
         );
     }
 
+    await Promise.all(
+        trackers
+            .filter((tracker) => tracker.defaultLogTypeId === logTypeId)
+            .map((tracker) =>
+                updateDoc(trackerDoc(tracker.id), {
+                    defaultLogTypeId: null,
+                    dateUpdated: serverTimestamp()
+                })
+            )
+    );
+
+    await deleteDoc(logTypeDoc(logTypeId));
+};
+
+export const listTrackerLogTypes = async (trackerId) => {
     const tracker = await getTracker(trackerId);
+    return listUserLogTypes(tracker?.ownerId);
+};
 
-    if (tracker?.defaultLogTypeId === logTypeId) {
-        await updateTracker(trackerId, { defaultLogTypeId: null });
-    }
+export const getTrackerLogType = async (trackerId, logTypeId) => {
+    void trackerId;
+    return getLogType(logTypeId);
+};
 
-    await deleteDoc(logTypeDoc(trackerId, logTypeId));
+export const createTrackerLogType = async (trackerId, data = {}) => {
+    const tracker = await getTracker(trackerId);
+    return createUserLogType({
+        ...data,
+        ownerId: tracker?.ownerId
+    });
+};
+
+export const updateTrackerLogType = async (trackerId, logTypeId, data = {}) => {
+    void trackerId;
+    return updateUserLogType(logTypeId, data);
+};
+
+export const deleteTrackerLogType = async (
+    trackerId,
+    logTypeId,
+    options = {}
+) => {
+    const tracker = await getTracker(trackerId);
+    return deleteUserLogType(tracker?.ownerId, logTypeId, options);
 };
 
 export const listTrackerLogs = async (trackerId, filters = {}) => {

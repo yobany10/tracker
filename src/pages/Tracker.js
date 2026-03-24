@@ -2,15 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import {
+    createUserLogType,
     createTrackerLog,
-    createTrackerLogType,
+    deleteUserLogType,
     deleteTrackerLog,
-    deleteTrackerLogType,
     getTracker,
     listTrackerLogs,
-    listTrackerLogTypes,
+    listUserLogTypes,
     updateTracker,
-    updateTrackerLogType,
+    updateUserLogType,
     updateTrackerLog
 } from "../services/firestore";
 
@@ -94,6 +94,33 @@ const formatDateTime = (value) => {
     }).format(parsedDate);
 };
 
+const formatTimeValue = (value) => {
+    if (typeof value !== "string") {
+        return String(value);
+    }
+
+    const match = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+
+    if (!match) {
+        return value;
+    }
+
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+
+    if (Number.isNaN(hours) || Number.isNaN(minutes) || hours > 23 || minutes > 59) {
+        return value;
+    }
+
+    const parsedDate = new Date(2000, 0, 1, hours, minutes);
+
+    return new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true
+    }).format(parsedDate).toLowerCase();
+};
+
 const formatFieldValue = (value, field) => {
     if (value === null || value === undefined || value === "") {
         return "Not provided";
@@ -101,6 +128,10 @@ const formatFieldValue = (value, field) => {
 
     if (field?.type === "checkbox") {
         return value ? "Yes" : "No";
+    }
+
+    if (field?.type === "time") {
+        return formatTimeValue(value);
     }
 
     if (typeof value?.toDate === "function") {
@@ -165,6 +196,7 @@ const getFieldInputValue = (field, event) => {
 const Tracker = () => {
     const { trackerId } = useParams();
     const [tracker, setTracker] = useState(null);
+    const [logTypeOwnerId, setLogTypeOwnerId] = useState("");
     const [logTypes, setLogTypes] = useState([]);
     const [logs, setLogs] = useState([]);
     const [selectedLogTypeId, setSelectedLogTypeId] = useState("");
@@ -195,9 +227,14 @@ const Tracker = () => {
             setError("");
 
             try {
-                const [trackerResult, logTypeResults, logResults] = await Promise.all([
-                    getTracker(trackerId),
-                    listTrackerLogTypes(trackerId),
+                const trackerResult = await getTracker(trackerId);
+
+                if (!trackerResult) {
+                    throw new Error("Tracker not found.");
+                }
+
+                const [logTypeResults, logResults] = await Promise.all([
+                    listUserLogTypes(trackerResult.ownerId),
                     listTrackerLogs(trackerId)
                 ]);
 
@@ -208,6 +245,7 @@ const Tracker = () => {
                 const orderedLogTypes = sortLogTypesByName(logTypeResults);
 
                 setTracker(trackerResult);
+                setLogTypeOwnerId(trackerResult.ownerId || "");
                 setLogTypes(orderedLogTypes);
                 setLogs(sortLogsByNewest(logResults));
                 setSelectedLogTypeId(trackerResult?.defaultLogTypeId || orderedLogTypes[0]?.id || "");
@@ -435,6 +473,11 @@ const Tracker = () => {
     const handleSaveLogType = async (event) => {
         event.preventDefault();
 
+        if (!logTypeOwnerId) {
+            setLogTypeError("Unable to determine which account owns this tracker.");
+            return;
+        }
+
         const name = logTypeDraft.name.trim();
         const fields = logTypeDraft.fields
             .map((field) => ({
@@ -482,7 +525,7 @@ const Tracker = () => {
             };
 
             if (activeLogType) {
-                await updateTrackerLogType(trackerId, activeLogType.id, payload);
+                await updateUserLogType(activeLogType.id, payload);
 
                 setLogTypes((currentLogTypes) =>
                     sortLogTypesByName(
@@ -494,7 +537,10 @@ const Tracker = () => {
                     )
                 );
             } else {
-                const logTypeId = await createTrackerLogType(trackerId, payload);
+                const logTypeId = await createUserLogType({
+                    ...payload,
+                    ownerId: logTypeOwnerId
+                });
                 const nextLogType = { ...payload, id: logTypeId };
 
                 setLogTypes((currentLogTypes) =>
@@ -512,12 +558,14 @@ const Tracker = () => {
     };
 
     const handleDeleteLogType = async (logType) => {
-        const relatedLogs = logs.filter((log) => log.logTypeId === logType.id);
-        const confirmMessage = relatedLogs.length > 0
-            ? `Delete this log type and its ${relatedLogs.length} related logs? This cannot be undone.`
-            : "Delete this log type? This cannot be undone.";
+        if (!logTypeOwnerId) {
+            setError("Unable to determine which account owns this tracker.");
+            return;
+        }
 
-        if (!window.confirm(confirmMessage)) {
+        if (!window.confirm(
+            "Delete this shared log type? Any logs using it across your trackers will also be deleted. This cannot be undone."
+        )) {
             return;
         }
 
@@ -525,8 +573,8 @@ const Tracker = () => {
         setError("");
 
         try {
-            await deleteTrackerLogType(trackerId, logType.id, {
-                deleteAssociatedLogs: relatedLogs.length > 0
+            await deleteUserLogType(logTypeOwnerId, logType.id, {
+                deleteAssociatedLogs: true
             });
 
             const remainingLogTypes = logTypes.filter((currentLogType) => currentLogType.id !== logType.id);
@@ -587,7 +635,7 @@ const Tracker = () => {
                     <h2>{tracker?.name || "Tracker"}</h2>
                     <p>
                         {tracker?.description ||
-                            "Use custom log types to record exactly what matters for this tracker."}
+                            "Use shared log types to record exactly what matters for this tracker."}
                     </p>
                 </div>
                 <div className="page-header__actions">
@@ -660,10 +708,10 @@ const Tracker = () => {
                         <div className="panel__header">
                             <div>
                                 <p className="section-label">Log types</p>
-                                <h3>Custom tracker schemas</h3>
+                                <h3>Shared log type library</h3>
                             </div>
                             <button className="button button--secondary" onClick={openLogTypeModal} type="button">
-                                Add custom log type
+                                Add shared log type
                             </button>
                         </div>
 
@@ -671,7 +719,7 @@ const Tracker = () => {
                             <div className="empty-state">
                                 <h4>No log types configured</h4>
                                 <p>
-                                    Add a log type with the fields you need before creating logs.
+                                    Create a shared log type here or on the home page before adding logs.
                                 </p>
                             </div>
                         )}
@@ -682,7 +730,7 @@ const Tracker = () => {
                                     <article className="builder-card" key={logType.id}>
                                         <div className="builder-card__header">
                                             <div>
-                                                <p className="section-label">Log type</p>
+                                                <p className="section-label">Shared log type</p>
                                                 <h4>{logType.name}</h4>
                                             </div>
                                             <div className="card-actions">
@@ -939,8 +987,8 @@ const Tracker = () => {
                                 <p className="section-label">{activeLogType ? "Edit log type" : "New log type"}</p>
                                 <h3>
                                     {activeLogType
-                                        ? "Update this tracker schema"
-                                        : "Define a custom schema for this tracker"}
+                                        ? "Update this shared schema"
+                                        : "Define a shared schema for your trackers"}
                                 </h3>
                             </div>
                             <button

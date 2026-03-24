@@ -3,7 +3,12 @@ import { Link } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "../firebase";
-import { createTracker, listUserTrackers } from "../services/firestore";
+import {
+    createTracker,
+    createUserLogType,
+    listUserLogTypes,
+    listUserTrackers
+} from "../services/firestore";
 
 const FIELD_TYPE_OPTIONS = [
     { value: "text", label: "Text" },
@@ -26,7 +31,6 @@ const createFieldDraft = () => ({
 });
 
 const createLogTypeDraft = () => ({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: "",
     description: "",
     fields: [createFieldDraft()]
@@ -35,11 +39,14 @@ const createLogTypeDraft = () => ({
 const createTrackerDraft = () => ({
     name: "",
     category: "",
-    description: "",
-    logTypes: [createLogTypeDraft()]
+    description: ""
 });
 
 const sortTrackersByName = (items) => {
+    return [...items].sort((left, right) => left.name.localeCompare(right.name));
+};
+
+const sortLogTypesByName = (items) => {
     return [...items].sort((left, right) => left.name.localeCompare(right.name));
 };
 
@@ -47,12 +54,17 @@ const Home = () => {
     const [userId, setUserId] = useState(null);
     const [authResolved, setAuthResolved] = useState(false);
     const [trackers, setTrackers] = useState([]);
+    const [logTypes, setLogTypes] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isCreateTrackerModalOpen, setIsCreateTrackerModalOpen] = useState(false);
+    const [isCreateLogTypeModalOpen, setIsCreateLogTypeModalOpen] = useState(false);
     const [isCreatingTracker, setIsCreatingTracker] = useState(false);
-    const [createError, setCreateError] = useState("");
+    const [isSavingLogType, setIsSavingLogType] = useState(false);
+    const [createTrackerError, setCreateTrackerError] = useState("");
+    const [logTypeError, setLogTypeError] = useState("");
     const [trackerDraft, setTrackerDraft] = useState(createTrackerDraft());
+    const [logTypeDraft, setLogTypeDraft] = useState(createLogTypeDraft());
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -70,6 +82,7 @@ const Home = () => {
 
         if (!userId) {
             setTrackers([]);
+            setLogTypes([]);
             setIsLoading(false);
             setError("");
             return;
@@ -77,21 +90,25 @@ const Home = () => {
 
         let isMounted = true;
 
-        const loadTrackers = async () => {
+        const loadHomeData = async () => {
             setIsLoading(true);
             setError("");
 
             try {
-                const trackerResults = await listUserTrackers(userId);
+                const [trackerResults, logTypeResults] = await Promise.all([
+                    listUserTrackers(userId),
+                    listUserLogTypes(userId)
+                ]);
 
                 if (!isMounted) {
                     return;
                 }
 
                 setTrackers(sortTrackersByName(trackerResults));
+                setLogTypes(sortLogTypesByName(logTypeResults));
             } catch (loadError) {
                 if (isMounted) {
-                    setError(loadError.message || "Unable to load your trackers right now.");
+                    setError(loadError.message || "Unable to load your data right now.");
                 }
             } finally {
                 if (isMounted) {
@@ -100,27 +117,43 @@ const Home = () => {
             }
         };
 
-        loadTrackers();
+        loadHomeData();
 
         return () => {
             isMounted = false;
         };
     }, [authResolved, userId]);
 
-    const openCreateModal = () => {
+    const openCreateTrackerModal = () => {
         setTrackerDraft(createTrackerDraft());
-        setCreateError("");
-        setIsCreateModalOpen(true);
+        setCreateTrackerError("");
+        setIsCreateTrackerModalOpen(true);
     };
 
-    const closeCreateModal = () => {
+    const closeCreateTrackerModal = () => {
         if (isCreatingTracker) {
             return;
         }
 
-        setIsCreateModalOpen(false);
-        setCreateError("");
+        setIsCreateTrackerModalOpen(false);
+        setCreateTrackerError("");
         setTrackerDraft(createTrackerDraft());
+    };
+
+    const openCreateLogTypeModal = () => {
+        setLogTypeDraft(createLogTypeDraft());
+        setLogTypeError("");
+        setIsCreateLogTypeModalOpen(true);
+    };
+
+    const closeCreateLogTypeModal = () => {
+        if (isSavingLogType) {
+            return;
+        }
+
+        setIsCreateLogTypeModalOpen(false);
+        setLogTypeError("");
+        setLogTypeDraft(createLogTypeDraft());
     };
 
     const updateTrackerDraft = (field, value) => {
@@ -130,79 +163,36 @@ const Home = () => {
         }));
     };
 
-    const addLogTypeDraft = () => {
-        setTrackerDraft((currentDraft) => ({
+    const updateLogTypeDraft = (field, value) => {
+        setLogTypeDraft((currentDraft) => ({
             ...currentDraft,
-            logTypes: [...currentDraft.logTypes, createLogTypeDraft()]
+            [field]: value
         }));
     };
 
-    const removeLogTypeDraft = (logTypeId) => {
-        setTrackerDraft((currentDraft) => ({
+    const addLogTypeFieldDraft = () => {
+        setLogTypeDraft((currentDraft) => ({
             ...currentDraft,
-            logTypes:
-                currentDraft.logTypes.length === 1
-                    ? currentDraft.logTypes
-                    : currentDraft.logTypes.filter((logType) => logType.id !== logTypeId)
+            fields: [...currentDraft.fields, createFieldDraft()]
         }));
     };
 
-    const updateLogTypeDraft = (logTypeId, field, value) => {
-        setTrackerDraft((currentDraft) => ({
+    const updateLogTypeFieldDraft = (fieldId, field, value) => {
+        setLogTypeDraft((currentDraft) => ({
             ...currentDraft,
-            logTypes: currentDraft.logTypes.map((logType) =>
-                logType.id === logTypeId ? { ...logType, [field]: value } : logType
+            fields: currentDraft.fields.map((currentField) =>
+                currentField.id === fieldId ? { ...currentField, [field]: value } : currentField
             )
         }));
     };
 
-    const addFieldDraft = (logTypeId) => {
-        setTrackerDraft((currentDraft) => ({
+    const removeLogTypeFieldDraft = (fieldId) => {
+        setLogTypeDraft((currentDraft) => ({
             ...currentDraft,
-            logTypes: currentDraft.logTypes.map((logType) =>
-                logType.id === logTypeId
-                    ? { ...logType, fields: [...logType.fields, createFieldDraft()] }
-                    : logType
-            )
-        }));
-    };
-
-    const removeFieldDraft = (logTypeId, fieldId) => {
-        setTrackerDraft((currentDraft) => ({
-            ...currentDraft,
-            logTypes: currentDraft.logTypes.map((logType) => {
-                if (logType.id !== logTypeId) {
-                    return logType;
-                }
-
-                return {
-                    ...logType,
-                    fields:
-                        logType.fields.length === 1
-                            ? logType.fields
-                            : logType.fields.filter((field) => field.id !== fieldId)
-                };
-            })
-        }));
-    };
-
-    const updateFieldDraft = (logTypeId, fieldId, field, value) => {
-        setTrackerDraft((currentDraft) => ({
-            ...currentDraft,
-            logTypes: currentDraft.logTypes.map((logType) => {
-                if (logType.id !== logTypeId) {
-                    return logType;
-                }
-
-                return {
-                    ...logType,
-                    fields: logType.fields.map((currentField) =>
-                        currentField.id === fieldId
-                            ? { ...currentField, [field]: value }
-                            : currentField
-                    )
-                };
-            })
+            fields:
+                currentDraft.fields.length === 1
+                    ? currentDraft.fields
+                    : currentDraft.fields.filter((field) => field.id !== fieldId)
         }));
     };
 
@@ -210,69 +200,26 @@ const Home = () => {
         event.preventDefault();
 
         if (!userId) {
-            setCreateError("You must be signed in to create a tracker.");
+            setCreateTrackerError("You must be signed in to create a tracker.");
             return;
         }
 
         const trimmedName = trackerDraft.name.trim();
-        const validLogTypes = trackerDraft.logTypes
-            .map((logType) => ({
-                ...logType,
-                name: logType.name.trim(),
-                description: logType.description.trim(),
-                fields: logType.fields
-                    .map((field) => ({
-                        ...field,
-                        label: field.label.trim(),
-                        unitLabel: field.unitLabel.trim(),
-                        placeholder: field.placeholder.trim(),
-                        options: field.type === "select"
-                            ? field.optionsText
-                                  .split(",")
-                                  .map((option) => option.trim())
-                                  .filter(Boolean)
-                            : []
-                    }))
-                    .filter((field) => field.label)
-            }))
-            .filter((logType) => logType.name);
 
         if (!trimmedName) {
-            setCreateError("Tracker name is required.");
-            return;
-        }
-
-        if (validLogTypes.length === 0) {
-            setCreateError("Add at least one custom log type for this tracker.");
-            return;
-        }
-
-        if (validLogTypes.some((logType) => logType.fields.length === 0)) {
-            setCreateError("Each log type needs at least one field.");
+            setCreateTrackerError("Tracker name is required.");
             return;
         }
 
         setIsCreatingTracker(true);
-        setCreateError("");
+        setCreateTrackerError("");
 
         try {
             const trackerId = await createTracker({
                 ownerId: userId,
                 name: trimmedName,
                 category: trackerDraft.category.trim(),
-                description: trackerDraft.description.trim(),
-                logTypes: validLogTypes.map((logType) => ({
-                    name: logType.name,
-                    description: logType.description,
-                    fields: logType.fields.map((field) => ({
-                        label: field.label,
-                        type: field.type,
-                        required: field.required,
-                        unitLabel: field.unitLabel || undefined,
-                        placeholder: field.placeholder || undefined,
-                        options: field.options.length > 0 ? field.options : undefined
-                    }))
-                }))
+                description: trackerDraft.description.trim()
             });
 
             const trackerRecord = {
@@ -281,18 +228,83 @@ const Home = () => {
                 name: trimmedName,
                 category: trackerDraft.category.trim(),
                 description: trackerDraft.description.trim(),
-                isArchived: false
+                isArchived: false,
+                defaultLogTypeId: null
             };
 
             setTrackers((currentTrackers) =>
                 sortTrackersByName([...currentTrackers, trackerRecord])
             );
-            setIsCreateModalOpen(false);
-            setTrackerDraft(createTrackerDraft());
+            closeCreateTrackerModal();
         } catch (submitError) {
-            setCreateError(submitError.message || "Unable to create the tracker.");
+            setCreateTrackerError(submitError.message || "Unable to create the tracker.");
         } finally {
             setIsCreatingTracker(false);
+        }
+    };
+
+    const handleCreateLogType = async (event) => {
+        event.preventDefault();
+
+        if (!userId) {
+            setLogTypeError("You must be signed in to create a log type.");
+            return;
+        }
+
+        const name = logTypeDraft.name.trim();
+        const fields = logTypeDraft.fields
+            .map((field) => ({
+                ...field,
+                label: field.label.trim(),
+                unitLabel: field.unitLabel.trim(),
+                placeholder: field.placeholder.trim(),
+                options: field.type === "select"
+                    ? field.optionsText
+                          .split(",")
+                          .map((option) => option.trim())
+                          .filter(Boolean)
+                    : []
+            }))
+            .filter((field) => field.label);
+
+        if (!name) {
+            setLogTypeError("Log type name is required.");
+            return;
+        }
+
+        if (fields.length === 0) {
+            setLogTypeError("Add at least one field for the log type.");
+            return;
+        }
+
+        setIsSavingLogType(true);
+        setLogTypeError("");
+
+        try {
+            const payload = {
+                ownerId: userId,
+                name,
+                description: logTypeDraft.description.trim(),
+                fields: fields.map((field) => ({
+                    id: field.id,
+                    label: field.label,
+                    type: field.type,
+                    required: field.required,
+                    unitLabel: field.unitLabel || undefined,
+                    placeholder: field.placeholder || undefined,
+                    options: field.options.length > 0 ? field.options : undefined
+                }))
+            };
+            const logTypeId = await createUserLogType(payload);
+
+            setLogTypes((currentLogTypes) =>
+                sortLogTypesByName([...currentLogTypes, { ...payload, id: logTypeId }])
+            );
+            closeCreateLogTypeModal();
+        } catch (submitError) {
+            setLogTypeError(submitError.message || "Unable to create the log type.");
+        } finally {
+            setIsSavingLogType(false);
         }
     };
 
@@ -303,8 +315,8 @@ const Home = () => {
                     <p className="hero-panel__eyebrow">Your trackers</p>
                     <h2 className="hero-panel__title">Keep every routine in one place.</h2>
                     <p className="hero-panel__body">
-                        Track recurring tasks like oil changes, lawn care, pumping sessions,
-                        or any custom workflow with log types tailored to each tracker.
+                        Create trackers for each workflow, then reuse the same custom log types
+                        across any tracker that needs them.
                     </p>
                 </div>
 
@@ -313,19 +325,33 @@ const Home = () => {
                         <span className="hero-panel__stat-value">{trackers.length}</span>
                         <span className="hero-panel__stat-label">Active trackers</span>
                     </div>
+                    <div className="hero-panel__stat-card">
+                        <span className="hero-panel__stat-value">{logTypes.length}</span>
+                        <span className="hero-panel__stat-label">Shared log types</span>
+                    </div>
                     <div className="hero-panel__stat-card hero-panel__stat-card--action">
                         <span className="hero-panel__stat-value">Build</span>
                         <span className="hero-panel__stat-label">
-                            Trackers with custom log types
+                            Create trackers and reusable schemas separately
                         </span>
-                        <button
-                            className="button button--primary"
-                            disabled={!userId}
-                            onClick={openCreateModal}
-                            type="button"
-                        >
-                            Create tracker
-                        </button>
+                        <div className="tracker-toolbar__actions">
+                            <button
+                                className="button button--secondary"
+                                disabled={!userId}
+                                onClick={openCreateLogTypeModal}
+                                type="button"
+                            >
+                                New log type
+                            </button>
+                            <button
+                                className="button button--primary"
+                                disabled={!userId}
+                                onClick={openCreateTrackerModal}
+                                type="button"
+                            >
+                                Create tracker
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -340,70 +366,209 @@ const Home = () => {
                 <section className="panel panel--centered">
                     <h3>No signed-in user</h3>
                     <p>
-                        Sign in first so the app can load the trackers tied to your account.
+                        Sign in first so the app can load the trackers and shared log types tied
+                        to your account.
                     </p>
                 </section>
             )}
 
             {authResolved && userId && (
-                <section className="panel">
-                    <div className="panel__header">
-                        <div>
-                            <p className="section-label">Tracker overview</p>
-                            <h3>Your tracker library</h3>
+                <>
+                    <section className="panel">
+                        <div className="panel__header">
+                            <div>
+                                <p className="section-label">Log types</p>
+                                <h3>Your shared log type library</h3>
+                            </div>
+
+                            <button
+                                className="button button--secondary"
+                                onClick={openCreateLogTypeModal}
+                                type="button"
+                            >
+                                New log type
+                            </button>
                         </div>
 
-                        <button className="button button--secondary" onClick={openCreateModal} type="button">
-                            New tracker
-                        </button>
-                    </div>
+                        {isLoading && <p className="status-message">Loading your library...</p>}
+                        {error && <p className="status-message status-message--error">{error}</p>}
 
-                    {isLoading && <p className="status-message">Loading trackers...</p>}
-                    {error && <p className="status-message status-message--error">{error}</p>}
+                        {!isLoading && !error && logTypes.length === 0 && (
+                            <div className="empty-state">
+                                <h4>No log types yet</h4>
+                                <p>
+                                    Create a shared log type once, then select it from any tracker
+                                    page when you add logs.
+                                </p>
+                            </div>
+                        )}
 
-                    {!isLoading && !error && trackers.length === 0 && (
-                        <div className="empty-state">
-                            <h4>No trackers yet</h4>
-                            <p>
-                                Create a tracker and define custom log types such as pumping,
-                                oil changes, or lawn treatment schedules.
-                            </p>
-                        </div>
-                    )}
-
-                    {!isLoading && !error && trackers.length > 0 && (
-                        <div className="tracker-grid">
-                            {trackers.map((tracker) => (
-                                <Link
-                                    key={tracker.id}
-                                    className="tracker-card"
-                                    to={`/trackers/${tracker.id}`}
-                                >
-                                    <div className="tracker-card__header">
-                                        <span className="tracker-card__badge">
-                                            {tracker.category || "General"}
-                                        </span>
-                                        {tracker.isArchived && (
-                                            <span className="tracker-card__badge tracker-card__badge--muted">
-                                                Archived
+                        {!isLoading && !error && logTypes.length > 0 && (
+                            <div className="builder-stack builder-stack--dense">
+                                {logTypes.map((logType) => (
+                                    <article className="builder-card" key={logType.id}>
+                                        <div className="builder-card__header">
+                                            <div>
+                                                <p className="section-label">Shared log type</p>
+                                                <h4>{logType.name}</h4>
+                                            </div>
+                                            <span className="tracker-card__badge">
+                                                {(logType.fields || []).length} fields
                                             </span>
-                                        )}
-                                    </div>
-                                    <h4>{tracker.name}</h4>
-                                    <p>
-                                        {tracker.description ||
-                                            "No description yet. Open this tracker to view logs and log types."}
-                                    </p>
-                                    <span className="tracker-card__cta">Open tracker</span>
-                                </Link>
-                            ))}
+                                        </div>
+                                        {logType.description && <p>{logType.description}</p>}
+                                        <div className="pill-row">
+                                            {(logType.fields || []).map((field) => (
+                                                <span className="info-pill" key={field.id}>
+                                                    {field.label}
+                                                    {field.unitLabel ? ` (${field.unitLabel})` : ""}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </article>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+
+                    <section className="panel">
+                        <div className="panel__header">
+                            <div>
+                                <p className="section-label">Tracker overview</p>
+                                <h3>Your tracker library</h3>
+                            </div>
+
+                            <button
+                                className="button button--secondary"
+                                onClick={openCreateTrackerModal}
+                                type="button"
+                            >
+                                New tracker
+                            </button>
                         </div>
-                    )}
-                </section>
+
+                        {isLoading && <p className="status-message">Loading trackers...</p>}
+
+                        {!isLoading && !error && trackers.length === 0 && (
+                            <div className="empty-state">
+                                <h4>No trackers yet</h4>
+                                <p>
+                                    Create a tracker first, then choose from your shared custom log
+                                    types on the tracker page.
+                                </p>
+                            </div>
+                        )}
+
+                        {!isLoading && !error && trackers.length > 0 && (
+                            <div className="tracker-grid">
+                                {trackers.map((tracker) => (
+                                    <Link
+                                        key={tracker.id}
+                                        className="tracker-card"
+                                        to={`/trackers/${tracker.id}`}
+                                    >
+                                        <div className="tracker-card__header">
+                                            <span className="tracker-card__badge">
+                                                {tracker.category || "General"}
+                                            </span>
+                                            {tracker.isArchived && (
+                                                <span className="tracker-card__badge tracker-card__badge--muted">
+                                                    Archived
+                                                </span>
+                                            )}
+                                        </div>
+                                        <h4>{tracker.name}</h4>
+                                        <p>
+                                            {tracker.description ||
+                                                "No description yet. Open this tracker to view logs and select a shared log type."}
+                                        </p>
+                                        <span className="tracker-card__cta">Open tracker</span>
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                </>
             )}
 
-            {isCreateModalOpen && (
-                <div className="modal-backdrop" onClick={closeCreateModal} role="presentation">
+            {isCreateTrackerModalOpen && (
+                <div className="modal-backdrop" onClick={closeCreateTrackerModal} role="presentation">
+                    <div
+                        aria-modal="true"
+                        className="modal"
+                        onClick={(event) => event.stopPropagation()}
+                        role="dialog"
+                    >
+                        <div className="modal__header">
+                            <div>
+                                <p className="section-label">Create tracker</p>
+                                <h3>Create a tracker</h3>
+                            </div>
+                            <button
+                                aria-label="Close tracker form"
+                                className="modal__close"
+                                onClick={closeCreateTrackerModal}
+                                type="button"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <form className="modal__form" onSubmit={handleCreateTracker}>
+                            <label className="field-group">
+                                <span>Tracker name</span>
+                                <input
+                                    placeholder="Car maintenance"
+                                    required
+                                    value={trackerDraft.name}
+                                    onChange={(event) => updateTrackerDraft("name", event.target.value)}
+                                />
+                            </label>
+
+                            <label className="field-group">
+                                <span>Category</span>
+                                <input
+                                    placeholder="Vehicle, Home, Family"
+                                    value={trackerDraft.category}
+                                    onChange={(event) => updateTrackerDraft("category", event.target.value)}
+                                />
+                            </label>
+
+                            <label className="field-group">
+                                <span>Description</span>
+                                <textarea
+                                    placeholder="Describe what this tracker is for"
+                                    rows={4}
+                                    value={trackerDraft.description}
+                                    onChange={(event) => updateTrackerDraft("description", event.target.value)}
+                                />
+                            </label>
+
+                            {createTrackerError && (
+                                <p className="status-message status-message--error">
+                                    {createTrackerError}
+                                </p>
+                            )}
+
+                            <div className="modal__actions">
+                                <button
+                                    className="button button--secondary"
+                                    onClick={closeCreateTrackerModal}
+                                    type="button"
+                                >
+                                    Cancel
+                                </button>
+                                <button className="button button--primary" disabled={isCreatingTracker} type="submit">
+                                    {isCreatingTracker ? "Creating..." : "Create tracker"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {isCreateLogTypeModalOpen && (
+                <div className="modal-backdrop" role="presentation" onClick={closeCreateLogTypeModal}>
                     <div
                         aria-modal="true"
                         className="modal modal--wide"
@@ -412,111 +577,108 @@ const Home = () => {
                     >
                         <div className="modal__header">
                             <div>
-                                <p className="section-label">Create tracker</p>
-                                <h3>Build a tracker with custom log types</h3>
+                                <p className="section-label">New log type</p>
+                                <h3>Define a shared schema</h3>
                             </div>
                             <button
-                                aria-label="Close tracker builder"
+                                aria-label="Close log type form"
                                 className="modal__close"
-                                onClick={closeCreateModal}
+                                onClick={closeCreateLogTypeModal}
                                 type="button"
                             >
                                 ×
                             </button>
                         </div>
 
-                        <form className="modal__form" onSubmit={handleCreateTracker}>
+                        <form className="modal__form" onSubmit={handleCreateLogType}>
                             <section className="builder-section">
-                                <div className="builder-section__header">
-                                    <div>
-                                        <p className="section-label">Tracker details</p>
-                                        <h4>Core information</h4>
-                                    </div>
-                                </div>
-
                                 <div className="builder-grid">
                                     <label className="field-group">
-                                        <span>Tracker name</span>
+                                        <span>Log type name</span>
                                         <input
-                                            placeholder="Car maintenance"
+                                            placeholder="Fertilizer treatment"
                                             required
-                                            value={trackerDraft.name}
-                                            onChange={(event) => updateTrackerDraft("name", event.target.value)}
+                                            value={logTypeDraft.name}
+                                            onChange={(event) => updateLogTypeDraft("name", event.target.value)}
                                         />
                                     </label>
 
                                     <label className="field-group">
-                                        <span>Category</span>
+                                        <span>Description</span>
                                         <input
-                                            placeholder="Vehicle, Home, Family"
-                                            value={trackerDraft.category}
-                                            onChange={(event) => updateTrackerDraft("category", event.target.value)}
+                                            placeholder="What should each log collect?"
+                                            value={logTypeDraft.description}
+                                            onChange={(event) =>
+                                                updateLogTypeDraft("description", event.target.value)
+                                            }
                                         />
                                     </label>
                                 </div>
-
-                                <label className="field-group">
-                                    <span>Description</span>
-                                    <textarea
-                                        placeholder="Describe what this tracker is for"
-                                        rows={3}
-                                        value={trackerDraft.description}
-                                        onChange={(event) => updateTrackerDraft("description", event.target.value)}
-                                    />
-                                </label>
                             </section>
 
                             <section className="builder-section">
                                 <div className="builder-section__header">
                                     <div>
-                                        <p className="section-label">Custom log types</p>
-                                        <h4>Define the data each log should collect</h4>
+                                        <p className="section-label">Fields</p>
+                                        <h4>Shape the log entry form</h4>
                                     </div>
-
-                                    <button className="button button--secondary" onClick={addLogTypeDraft} type="button">
-                                        Add log type
+                                    <button className="button button--secondary" onClick={addLogTypeFieldDraft} type="button">
+                                        Add field
                                     </button>
                                 </div>
 
                                 <div className="builder-stack">
-                                    {trackerDraft.logTypes.map((logType, index) => (
-                                        <article className="builder-card" key={logType.id}>
-                                            <div className="builder-card__header">
-                                                <div>
-                                                    <p className="section-label">Log type {index + 1}</p>
-                                                    <h4>{logType.name || "Untitled log type"}</h4>
-                                                </div>
+                                    {logTypeDraft.fields.map((field, index) => (
+                                        <div className="field-builder" key={field.id}>
+                                            <div className="field-builder__header">
+                                                <strong>Field {index + 1}</strong>
                                                 <button
                                                     className="button button--ghost"
-                                                    disabled={trackerDraft.logTypes.length === 1}
-                                                    onClick={() => removeLogTypeDraft(logType.id)}
+                                                    disabled={logTypeDraft.fields.length === 1}
+                                                    onClick={() => removeLogTypeFieldDraft(field.id)}
                                                     type="button"
                                                 >
                                                     Remove
                                                 </button>
                                             </div>
 
-                                            <div className="builder-grid">
+                                            <div className="builder-grid builder-grid--three-columns">
                                                 <label className="field-group">
-                                                    <span>Name</span>
+                                                    <span>Label</span>
                                                     <input
-                                                        placeholder="Oil change"
-                                                        value={logType.name}
+                                                        placeholder="Product brand"
+                                                        value={field.label}
                                                         onChange={(event) =>
-                                                            updateLogTypeDraft(logType.id, "name", event.target.value)
+                                                            updateLogTypeFieldDraft(field.id, "label", event.target.value)
                                                         }
                                                     />
                                                 </label>
 
                                                 <label className="field-group">
-                                                    <span>Description</span>
-                                                    <input
-                                                        placeholder="What should this log capture?"
-                                                        value={logType.description}
+                                                    <span>Type</span>
+                                                    <select
+                                                        value={field.type}
                                                         onChange={(event) =>
-                                                            updateLogTypeDraft(
-                                                                logType.id,
-                                                                "description",
+                                                            updateLogTypeFieldDraft(field.id, "type", event.target.value)
+                                                        }
+                                                    >
+                                                        {FIELD_TYPE_OPTIONS.map((option) => (
+                                                            <option key={option.value} value={option.value}>
+                                                                {option.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </label>
+
+                                                <label className="field-group">
+                                                    <span>Unit</span>
+                                                    <input
+                                                        placeholder="lbs, oz, mL"
+                                                        value={field.unitLabel}
+                                                        onChange={(event) =>
+                                                            updateLogTypeFieldDraft(
+                                                                field.id,
+                                                                "unitLabel",
                                                                 event.target.value
                                                             )
                                                         }
@@ -524,159 +686,68 @@ const Home = () => {
                                                 </label>
                                             </div>
 
-                                            <div className="builder-section__header builder-section__header--nested">
-                                                <div>
-                                                    <p className="section-label">Fields</p>
-                                                    <h4>Choose the inputs for this log type</h4>
-                                                </div>
+                                            <div className="builder-grid builder-grid--three-columns">
+                                                <label className="field-group">
+                                                    <span>Placeholder</span>
+                                                    <input
+                                                        placeholder="Optional helper text"
+                                                        value={field.placeholder}
+                                                        onChange={(event) =>
+                                                            updateLogTypeFieldDraft(
+                                                                field.id,
+                                                                "placeholder",
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                    />
+                                                </label>
 
-                                                <button
-                                                    className="button button--secondary"
-                                                    onClick={() => addFieldDraft(logType.id)}
-                                                    type="button"
-                                                >
-                                                    Add field
-                                                </button>
+                                                <label className="field-group">
+                                                    <span>Options</span>
+                                                    <input
+                                                        disabled={field.type !== "select"}
+                                                        placeholder="Option A, Option B"
+                                                        value={field.optionsText}
+                                                        onChange={(event) =>
+                                                            updateLogTypeFieldDraft(
+                                                                field.id,
+                                                                "optionsText",
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                    />
+                                                </label>
+
+                                                <label className="field-group field-group--checkbox field-group--checkbox-card">
+                                                    <input
+                                                        checked={field.required}
+                                                        type="checkbox"
+                                                        onChange={(event) =>
+                                                            updateLogTypeFieldDraft(
+                                                                field.id,
+                                                                "required",
+                                                                event.target.checked
+                                                            )
+                                                        }
+                                                    />
+                                                    <span>Required field</span>
+                                                </label>
                                             </div>
-
-                                            <div className="builder-stack">
-                                                {logType.fields.map((field, fieldIndex) => (
-                                                    <div className="field-builder" key={field.id}>
-                                                        <div className="field-builder__header">
-                                                            <strong>Field {fieldIndex + 1}</strong>
-                                                            <button
-                                                                className="button button--ghost"
-                                                                disabled={logType.fields.length === 1}
-                                                                onClick={() => removeFieldDraft(logType.id, field.id)}
-                                                                type="button"
-                                                            >
-                                                                Remove
-                                                            </button>
-                                                        </div>
-
-                                                        <div className="builder-grid builder-grid--three-columns">
-                                                            <label className="field-group">
-                                                                <span>Label</span>
-                                                                <input
-                                                                    placeholder="Mileage"
-                                                                    value={field.label}
-                                                                    onChange={(event) =>
-                                                                        updateFieldDraft(
-                                                                            logType.id,
-                                                                            field.id,
-                                                                            "label",
-                                                                            event.target.value
-                                                                        )
-                                                                    }
-                                                                />
-                                                            </label>
-
-                                                            <label className="field-group">
-                                                                <span>Type</span>
-                                                                <select
-                                                                    value={field.type}
-                                                                    onChange={(event) =>
-                                                                        updateFieldDraft(
-                                                                            logType.id,
-                                                                            field.id,
-                                                                            "type",
-                                                                            event.target.value
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    {FIELD_TYPE_OPTIONS.map((option) => (
-                                                                        <option key={option.value} value={option.value}>
-                                                                            {option.label}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </label>
-
-                                                            <label className="field-group">
-                                                                <span>Unit</span>
-                                                                <input
-                                                                    placeholder="mL, miles, oz"
-                                                                    value={field.unitLabel}
-                                                                    onChange={(event) =>
-                                                                        updateFieldDraft(
-                                                                            logType.id,
-                                                                            field.id,
-                                                                            "unitLabel",
-                                                                            event.target.value
-                                                                        )
-                                                                    }
-                                                                />
-                                                            </label>
-                                                        </div>
-
-                                                        <div className="builder-grid builder-grid--three-columns">
-                                                            <label className="field-group">
-                                                                <span>Placeholder</span>
-                                                                <input
-                                                                    placeholder="Optional helper text"
-                                                                    value={field.placeholder}
-                                                                    onChange={(event) =>
-                                                                        updateFieldDraft(
-                                                                            logType.id,
-                                                                            field.id,
-                                                                            "placeholder",
-                                                                            event.target.value
-                                                                        )
-                                                                    }
-                                                                />
-                                                            </label>
-
-                                                            <label className="field-group">
-                                                                <span>Options</span>
-                                                                <input
-                                                                    disabled={field.type !== "select"}
-                                                                    placeholder="Brand A, Brand B"
-                                                                    value={field.optionsText}
-                                                                    onChange={(event) =>
-                                                                        updateFieldDraft(
-                                                                            logType.id,
-                                                                            field.id,
-                                                                            "optionsText",
-                                                                            event.target.value
-                                                                        )
-                                                                    }
-                                                                />
-                                                            </label>
-
-                                                            <label className="field-group field-group--checkbox field-group--checkbox-card">
-                                                                <input
-                                                                    checked={field.required}
-                                                                    type="checkbox"
-                                                                    onChange={(event) =>
-                                                                        updateFieldDraft(
-                                                                            logType.id,
-                                                                            field.id,
-                                                                            "required",
-                                                                            event.target.checked
-                                                                        )
-                                                                    }
-                                                                />
-                                                                <span>Required field</span>
-                                                            </label>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </article>
+                                        </div>
                                     ))}
                                 </div>
                             </section>
 
-                            {createError && (
-                                <p className="status-message status-message--error">{createError}</p>
+                            {logTypeError && (
+                                <p className="status-message status-message--error">{logTypeError}</p>
                             )}
 
                             <div className="modal__actions">
-                                <button className="button button--secondary" onClick={closeCreateModal} type="button">
+                                <button className="button button--secondary" onClick={closeCreateLogTypeModal} type="button">
                                     Cancel
                                 </button>
-                                <button className="button button--primary" disabled={isCreatingTracker} type="submit">
-                                    {isCreatingTracker ? "Creating..." : "Create tracker"}
+                                <button className="button button--primary" disabled={isSavingLogType} type="submit">
+                                    {isSavingLogType ? "Saving..." : "Create log type"}
                                 </button>
                             </div>
                         </form>
