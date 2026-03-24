@@ -107,7 +107,6 @@ const normalizeTrackerPayload = (data = {}) => {
         ownerId: input.ownerId,
         name,
         category: normalizeText(input.category),
-        description: normalizeText(input.description),
         icon: normalizeText(input.icon),
         color: normalizeText(input.color),
         defaultLogTypeId: input.defaultLogTypeId || null,
@@ -129,10 +128,6 @@ const normalizeTrackerUpdatePayload = (data = {}) => {
 
     if (Object.prototype.hasOwnProperty.call(input, "category")) {
         payload.category = normalizeText(input.category);
-    }
-
-    if (Object.prototype.hasOwnProperty.call(input, "description")) {
-        payload.description = normalizeText(input.description);
     }
 
     if (Object.prototype.hasOwnProperty.call(input, "icon")) {
@@ -196,7 +191,6 @@ const normalizeLogTypePayload = (data = {}) => {
     return removeUndefinedDeep({
         ownerId: input.ownerId,
         name,
-        description: normalizeText(input.description),
         fields: Array.isArray(input.fields)
             ? input.fields.map(normalizeLogTypeField)
             : [],
@@ -213,10 +207,6 @@ const normalizeLogTypeUpdatePayload = (data = {}) => {
         const name = normalizeText(input.name);
         assertRequired(name, "Log type name");
         payload.name = name;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(input, "description")) {
-        payload.description = normalizeText(input.description);
     }
 
     if (Object.prototype.hasOwnProperty.call(input, "fields")) {

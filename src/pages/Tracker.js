@@ -36,14 +36,12 @@ const createFieldDraft = () => ({
 
 const createLogTypeDraft = () => ({
     name: "",
-    description: "",
     fields: [createFieldDraft()]
 });
 
 const createTrackerDraft = (tracker) => ({
     name: tracker?.name || "",
-    category: tracker?.category || "",
-    description: tracker?.description || ""
+    category: tracker?.category || ""
 });
 
 const normalizeFieldKey = (value) => {
@@ -57,7 +55,6 @@ const normalizeFieldKey = (value) => {
 const createLogTypeDraftFromExisting = (logType) => ({
     id: logType.id,
     name: logType.name || "",
-    description: logType.description || "",
     fields: (logType.fields || []).map((field) => ({
         id: field.id,
         key: field.key,
@@ -511,7 +508,6 @@ const Tracker = () => {
         try {
             const payload = {
                 name,
-                description: logTypeDraft.description.trim(),
                 fields: fields.map((field) => ({
                     id: field.id,
                     key: field.key || normalizeFieldKey(field.label),
@@ -608,8 +604,7 @@ const Tracker = () => {
         try {
             const payload = {
                 name,
-                category: trackerDraft.category.trim(),
-                description: trackerDraft.description.trim()
+                category: trackerDraft.category.trim()
             };
 
             await updateTracker(trackerId, payload);
@@ -633,10 +628,7 @@ const Tracker = () => {
                         Back to trackers
                     </Link>
                     <h2>{tracker?.name || "Tracker"}</h2>
-                    <p>
-                        {tracker?.description ||
-                            "Use shared log types to record exactly what matters for this tracker."}
-                    </p>
+                    <p>Use shared log types to record exactly what matters for this tracker.</p>
                 </div>
                 <div className="page-header__actions">
                     <div className="page-header__meta">
@@ -754,7 +746,6 @@ const Tracker = () => {
                                                 </button>
                                             </div>
                                         </div>
-                                        {logType.description && <p>{logType.description}</p>}
                                         <div className="pill-row">
                                             {(logType.fields || []).map((field) => (
                                                 <span className="info-pill" key={field.id}>
@@ -1015,17 +1006,6 @@ const Tracker = () => {
                                             }
                                         />
                                     </label>
-
-                                    <label className="field-group">
-                                        <span>Description</span>
-                                        <input
-                                            placeholder="What should each log collect?"
-                                            value={logTypeDraft.description}
-                                            onChange={(event) =>
-                                                updateLogTypeDraftField("description", event.target.value)
-                                            }
-                                        />
-                                    </label>
                                 </div>
                             </section>
 
@@ -1212,16 +1192,6 @@ const Tracker = () => {
                                     placeholder="Vehicle, Home, Family"
                                     value={trackerDraft.category}
                                     onChange={(event) => handleTrackerDraftChange("category", event.target.value)}
-                                />
-                            </label>
-
-                            <label className="field-group">
-                                <span>Description</span>
-                                <textarea
-                                    placeholder="Describe what this tracker is for"
-                                    rows={4}
-                                    value={trackerDraft.description}
-                                    onChange={(event) => handleTrackerDraftChange("description", event.target.value)}
                                 />
                             </label>
 

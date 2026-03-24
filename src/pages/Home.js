@@ -32,14 +32,12 @@ const createFieldDraft = () => ({
 
 const createLogTypeDraft = () => ({
     name: "",
-    description: "",
     fields: [createFieldDraft()]
 });
 
 const createTrackerDraft = () => ({
     name: "",
-    category: "",
-    description: ""
+    category: ""
 });
 
 const sortTrackersByName = (items) => {
@@ -218,8 +216,7 @@ const Home = () => {
             const trackerId = await createTracker({
                 ownerId: userId,
                 name: trimmedName,
-                category: trackerDraft.category.trim(),
-                description: trackerDraft.description.trim()
+                category: trackerDraft.category.trim()
             });
 
             const trackerRecord = {
@@ -227,7 +224,6 @@ const Home = () => {
                 ownerId: userId,
                 name: trimmedName,
                 category: trackerDraft.category.trim(),
-                description: trackerDraft.description.trim(),
                 isArchived: false,
                 defaultLogTypeId: null
             };
@@ -284,7 +280,6 @@ const Home = () => {
             const payload = {
                 ownerId: userId,
                 name,
-                description: logTypeDraft.description.trim(),
                 fields: fields.map((field) => ({
                     id: field.id,
                     label: field.label,
@@ -416,7 +411,6 @@ const Home = () => {
                                                 {(logType.fields || []).length} fields
                                             </span>
                                         </div>
-                                        {logType.description && <p>{logType.description}</p>}
                                         <div className="pill-row">
                                             {(logType.fields || []).map((field) => (
                                                 <span className="info-pill" key={field.id}>
@@ -478,10 +472,7 @@ const Home = () => {
                                             )}
                                         </div>
                                         <h4>{tracker.name}</h4>
-                                        <p>
-                                            {tracker.description ||
-                                                "No description yet. Open this tracker to view logs and select a shared log type."}
-                                        </p>
+                                        <p>Open this tracker to view logs and use your shared log types.</p>
                                         <span className="tracker-card__cta">Open tracker</span>
                                     </Link>
                                 ))}
@@ -531,16 +522,6 @@ const Home = () => {
                                     placeholder="Vehicle, Home, Family"
                                     value={trackerDraft.category}
                                     onChange={(event) => updateTrackerDraft("category", event.target.value)}
-                                />
-                            </label>
-
-                            <label className="field-group">
-                                <span>Description</span>
-                                <textarea
-                                    placeholder="Describe what this tracker is for"
-                                    rows={4}
-                                    value={trackerDraft.description}
-                                    onChange={(event) => updateTrackerDraft("description", event.target.value)}
                                 />
                             </label>
 
@@ -600,17 +581,6 @@ const Home = () => {
                                             required
                                             value={logTypeDraft.name}
                                             onChange={(event) => updateLogTypeDraft("name", event.target.value)}
-                                        />
-                                    </label>
-
-                                    <label className="field-group">
-                                        <span>Description</span>
-                                        <input
-                                            placeholder="What should each log collect?"
-                                            value={logTypeDraft.description}
-                                            onChange={(event) =>
-                                                updateLogTypeDraft("description", event.target.value)
-                                            }
                                         />
                                     </label>
                                 </div>
