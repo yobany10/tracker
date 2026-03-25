@@ -1,39 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "../firebase";
 import {
     createTracker,
-    createUserLogType,
     listUserLogTypes,
     listUserTrackers
 } from "../services/firestore";
-
-const FIELD_TYPE_OPTIONS = [
-    { value: "text", label: "Text" },
-    { value: "number", label: "Number" },
-    { value: "date", label: "Date" },
-    { value: "time", label: "Time" },
-    { value: "textarea", label: "Long text" },
-    { value: "select", label: "Select" },
-    { value: "checkbox", label: "Checkbox" }
-];
-
-const createFieldDraft = () => ({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    label: "",
-    type: "text",
-    required: false,
-    unitLabel: "",
-    placeholder: "",
-    optionsText: ""
-});
-
-const createLogTypeDraft = () => ({
-    name: "",
-    fields: [createFieldDraft()]
-});
 
 const createTrackerDraft = () => ({
     name: "",
@@ -49,6 +23,7 @@ const sortLogTypesByName = (items) => {
 };
 
 const Home = () => {
+    const navigate = useNavigate();
     const [userId, setUserId] = useState(null);
     const [authResolved, setAuthResolved] = useState(false);
     const [trackers, setTrackers] = useState([]);
@@ -56,13 +31,9 @@ const Home = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
     const [isCreateTrackerModalOpen, setIsCreateTrackerModalOpen] = useState(false);
-    const [isCreateLogTypeModalOpen, setIsCreateLogTypeModalOpen] = useState(false);
     const [isCreatingTracker, setIsCreatingTracker] = useState(false);
-    const [isSavingLogType, setIsSavingLogType] = useState(false);
     const [createTrackerError, setCreateTrackerError] = useState("");
-    const [logTypeError, setLogTypeError] = useState("");
     const [trackerDraft, setTrackerDraft] = useState(createTrackerDraft());
-    const [logTypeDraft, setLogTypeDraft] = useState(createLogTypeDraft());
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -138,59 +109,18 @@ const Home = () => {
         setTrackerDraft(createTrackerDraft());
     };
 
-    const openCreateLogTypeModal = () => {
-        setLogTypeDraft(createLogTypeDraft());
-        setLogTypeError("");
-        setIsCreateLogTypeModalOpen(true);
-    };
-
-    const closeCreateLogTypeModal = () => {
-        if (isSavingLogType) {
-            return;
-        }
-
-        setIsCreateLogTypeModalOpen(false);
-        setLogTypeError("");
-        setLogTypeDraft(createLogTypeDraft());
+    const openCreateLogTypePage = () => {
+        navigate("/log-types/new", {
+            state: {
+                returnTo: "/"
+            }
+        });
     };
 
     const updateTrackerDraft = (field, value) => {
         setTrackerDraft((currentDraft) => ({
             ...currentDraft,
             [field]: value
-        }));
-    };
-
-    const updateLogTypeDraft = (field, value) => {
-        setLogTypeDraft((currentDraft) => ({
-            ...currentDraft,
-            [field]: value
-        }));
-    };
-
-    const addLogTypeFieldDraft = () => {
-        setLogTypeDraft((currentDraft) => ({
-            ...currentDraft,
-            fields: [...currentDraft.fields, createFieldDraft()]
-        }));
-    };
-
-    const updateLogTypeFieldDraft = (fieldId, field, value) => {
-        setLogTypeDraft((currentDraft) => ({
-            ...currentDraft,
-            fields: currentDraft.fields.map((currentField) =>
-                currentField.id === fieldId ? { ...currentField, [field]: value } : currentField
-            )
-        }));
-    };
-
-    const removeLogTypeFieldDraft = (fieldId) => {
-        setLogTypeDraft((currentDraft) => ({
-            ...currentDraft,
-            fields:
-                currentDraft.fields.length === 1
-                    ? currentDraft.fields
-                    : currentDraft.fields.filter((field) => field.id !== fieldId)
         }));
     };
 
@@ -239,70 +169,6 @@ const Home = () => {
         }
     };
 
-    const handleCreateLogType = async (event) => {
-        event.preventDefault();
-
-        if (!userId) {
-            setLogTypeError("You must be signed in to create a log type.");
-            return;
-        }
-
-        const name = logTypeDraft.name.trim();
-        const fields = logTypeDraft.fields
-            .map((field) => ({
-                ...field,
-                label: field.label.trim(),
-                unitLabel: field.unitLabel.trim(),
-                placeholder: field.placeholder.trim(),
-                options: field.type === "select"
-                    ? field.optionsText
-                          .split(",")
-                          .map((option) => option.trim())
-                          .filter(Boolean)
-                    : []
-            }))
-            .filter((field) => field.label);
-
-        if (!name) {
-            setLogTypeError("Log type name is required.");
-            return;
-        }
-
-        if (fields.length === 0) {
-            setLogTypeError("Add at least one field for the log type.");
-            return;
-        }
-
-        setIsSavingLogType(true);
-        setLogTypeError("");
-
-        try {
-            const payload = {
-                ownerId: userId,
-                name,
-                fields: fields.map((field) => ({
-                    id: field.id,
-                    label: field.label,
-                    type: field.type,
-                    required: field.required,
-                    unitLabel: field.unitLabel || undefined,
-                    placeholder: field.placeholder || undefined,
-                    options: field.options.length > 0 ? field.options : undefined
-                }))
-            };
-            const logTypeId = await createUserLogType(payload);
-
-            setLogTypes((currentLogTypes) =>
-                sortLogTypesByName([...currentLogTypes, { ...payload, id: logTypeId }])
-            );
-            closeCreateLogTypeModal();
-        } catch (submitError) {
-            setLogTypeError(submitError.message || "Unable to create the log type.");
-        } finally {
-            setIsSavingLogType(false);
-        }
-    };
-
     return (
         <main className="page page--home">
             <section className="hero-panel">
@@ -333,7 +199,7 @@ const Home = () => {
                             <button
                                 className="button button--secondary"
                                 disabled={!userId}
-                                onClick={openCreateLogTypeModal}
+                                onClick={openCreateLogTypePage}
                                 type="button"
                             >
                                 New log type
@@ -378,7 +244,7 @@ const Home = () => {
 
                             <button
                                 className="button button--secondary"
-                                onClick={openCreateLogTypeModal}
+                                onClick={openCreateLogTypePage}
                                 type="button"
                             >
                                 New log type
@@ -548,182 +414,6 @@ const Home = () => {
                 </div>
             )}
 
-            {isCreateLogTypeModalOpen && (
-                <div className="modal-backdrop" role="presentation" onClick={closeCreateLogTypeModal}>
-                    <div
-                        aria-modal="true"
-                        className="modal modal--wide"
-                        onClick={(event) => event.stopPropagation()}
-                        role="dialog"
-                    >
-                        <div className="modal__header">
-                            <div>
-                                <p className="section-label">New log type</p>
-                                <h3>Define a shared schema</h3>
-                            </div>
-                            <button
-                                aria-label="Close log type form"
-                                className="modal__close"
-                                onClick={closeCreateLogTypeModal}
-                                type="button"
-                            >
-                                ×
-                            </button>
-                        </div>
-
-                        <form className="modal__form" onSubmit={handleCreateLogType}>
-                            <section className="builder-section">
-                                <div className="builder-grid">
-                                    <label className="field-group">
-                                        <span>Log type name</span>
-                                        <input
-                                            placeholder="Fertilizer treatment"
-                                            required
-                                            value={logTypeDraft.name}
-                                            onChange={(event) => updateLogTypeDraft("name", event.target.value)}
-                                        />
-                                    </label>
-                                </div>
-                            </section>
-
-                            <section className="builder-section">
-                                <div className="builder-section__header">
-                                    <div>
-                                        <p className="section-label">Fields</p>
-                                        <h4>Shape the log entry form</h4>
-                                    </div>
-                                    <button className="button button--secondary" onClick={addLogTypeFieldDraft} type="button">
-                                        Add field
-                                    </button>
-                                </div>
-
-                                <div className="builder-stack">
-                                    {logTypeDraft.fields.map((field, index) => (
-                                        <div className="field-builder" key={field.id}>
-                                            <div className="field-builder__header">
-                                                <strong>Field {index + 1}</strong>
-                                                <button
-                                                    className="button button--ghost"
-                                                    disabled={logTypeDraft.fields.length === 1}
-                                                    onClick={() => removeLogTypeFieldDraft(field.id)}
-                                                    type="button"
-                                                >
-                                                    Remove
-                                                </button>
-                                            </div>
-
-                                            <div className="builder-grid builder-grid--three-columns">
-                                                <label className="field-group">
-                                                    <span>Label</span>
-                                                    <input
-                                                        placeholder="Product brand"
-                                                        value={field.label}
-                                                        onChange={(event) =>
-                                                            updateLogTypeFieldDraft(field.id, "label", event.target.value)
-                                                        }
-                                                    />
-                                                </label>
-
-                                                <label className="field-group">
-                                                    <span>Type</span>
-                                                    <select
-                                                        value={field.type}
-                                                        onChange={(event) =>
-                                                            updateLogTypeFieldDraft(field.id, "type", event.target.value)
-                                                        }
-                                                    >
-                                                        {FIELD_TYPE_OPTIONS.map((option) => (
-                                                            <option key={option.value} value={option.value}>
-                                                                {option.label}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </label>
-
-                                                <label className="field-group">
-                                                    <span>Unit</span>
-                                                    <input
-                                                        placeholder="lbs, oz, mL"
-                                                        value={field.unitLabel}
-                                                        onChange={(event) =>
-                                                            updateLogTypeFieldDraft(
-                                                                field.id,
-                                                                "unitLabel",
-                                                                event.target.value
-                                                            )
-                                                        }
-                                                    />
-                                                </label>
-                                            </div>
-
-                                            <div className="builder-grid builder-grid--three-columns">
-                                                <label className="field-group">
-                                                    <span>Placeholder</span>
-                                                    <input
-                                                        placeholder="Optional helper text"
-                                                        value={field.placeholder}
-                                                        onChange={(event) =>
-                                                            updateLogTypeFieldDraft(
-                                                                field.id,
-                                                                "placeholder",
-                                                                event.target.value
-                                                            )
-                                                        }
-                                                    />
-                                                </label>
-
-                                                <label className="field-group">
-                                                    <span>Options</span>
-                                                    <input
-                                                        disabled={field.type !== "select"}
-                                                        placeholder="Option A, Option B"
-                                                        value={field.optionsText}
-                                                        onChange={(event) =>
-                                                            updateLogTypeFieldDraft(
-                                                                field.id,
-                                                                "optionsText",
-                                                                event.target.value
-                                                            )
-                                                        }
-                                                    />
-                                                </label>
-
-                                                <label className="field-group field-group--checkbox field-group--checkbox-card">
-                                                    <input
-                                                        checked={field.required}
-                                                        type="checkbox"
-                                                        onChange={(event) =>
-                                                            updateLogTypeFieldDraft(
-                                                                field.id,
-                                                                "required",
-                                                                event.target.checked
-                                                            )
-                                                        }
-                                                    />
-                                                    <span>Required field</span>
-                                                </label>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </section>
-
-                            {logTypeError && (
-                                <p className="status-message status-message--error">{logTypeError}</p>
-                            )}
-
-                            <div className="modal__actions">
-                                <button className="button button--secondary" onClick={closeCreateLogTypeModal} type="button">
-                                    Cancel
-                                </button>
-                                <button className="button button--primary" disabled={isSavingLogType} type="submit">
-                                    {isSavingLogType ? "Saving..." : "Create log type"}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
         </main>
     );
 };

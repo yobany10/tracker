@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import {
-    createUserLogType,
     createTrackerLog,
     deleteUserLogType,
     deleteTrackerLog,
@@ -192,6 +191,8 @@ const getFieldInputValue = (field, event) => {
 
 const Tracker = () => {
     const { trackerId } = useParams();
+    const location = useLocation();
+    const navigate = useNavigate();
     const [tracker, setTracker] = useState(null);
     const [logTypeOwnerId, setLogTypeOwnerId] = useState("");
     const [logTypes, setLogTypes] = useState([]);
@@ -215,6 +216,20 @@ const Tracker = () => {
     const [trackerDraft, setTrackerDraft] = useState(createTrackerDraft(null));
     const [isSavingTracker, setIsSavingTracker] = useState(false);
     const [trackerError, setTrackerError] = useState("");
+
+    useEffect(() => {
+        const createdLogTypeId = location.state?.createdLogTypeId;
+
+        if (!createdLogTypeId || !logTypes.some((logType) => logType.id === createdLogTypeId)) {
+            return;
+        }
+
+        setSelectedLogTypeId(createdLogTypeId);
+        navigate(location.pathname, {
+            replace: true,
+            state: {}
+        });
+    }, [location.pathname, location.state, logTypes, navigate]);
 
     useEffect(() => {
         let isMounted = true;
@@ -386,11 +401,12 @@ const Tracker = () => {
         }
     };
 
-    const openLogTypeModal = () => {
-        setActiveLogType(null);
-        setLogTypeDraft(createLogTypeDraft());
-        setLogTypeError("");
-        setIsLogTypeModalOpen(true);
+    const openCreateLogTypePage = () => {
+        navigate(`/trackers/${trackerId}/log-types/new`, {
+            state: {
+                returnTo: `/trackers/${trackerId}`
+            }
+        });
     };
 
     const openEditLogTypeModal = (logType) => {
@@ -506,6 +522,10 @@ const Tracker = () => {
         setLogTypeError("");
 
         try {
+            if (!activeLogType) {
+                throw new Error("Choose an existing log type to edit.");
+            }
+
             const payload = {
                 name,
                 fields: fields.map((field) => ({
@@ -520,30 +540,17 @@ const Tracker = () => {
                 }))
             };
 
-            if (activeLogType) {
-                await updateUserLogType(activeLogType.id, payload);
+            await updateUserLogType(activeLogType.id, payload);
 
-                setLogTypes((currentLogTypes) =>
-                    sortLogTypesByName(
-                        currentLogTypes.map((logType) =>
-                            logType.id === activeLogType.id
-                                ? { ...logType, ...payload, id: activeLogType.id }
-                                : logType
-                        )
+            setLogTypes((currentLogTypes) =>
+                sortLogTypesByName(
+                    currentLogTypes.map((logType) =>
+                        logType.id === activeLogType.id
+                            ? { ...logType, ...payload, id: activeLogType.id }
+                            : logType
                     )
-                );
-            } else {
-                const logTypeId = await createUserLogType({
-                    ...payload,
-                    ownerId: logTypeOwnerId
-                });
-                const nextLogType = { ...payload, id: logTypeId };
-
-                setLogTypes((currentLogTypes) =>
-                    sortLogTypesByName([...currentLogTypes, nextLogType])
-                );
-                setSelectedLogTypeId((currentValue) => currentValue || logTypeId);
-            }
+                )
+            );
 
             closeLogTypeModal();
         } catch (submitError) {
@@ -679,7 +686,7 @@ const Tracker = () => {
 
                             <button
                                 className="button button--secondary"
-                                onClick={openLogTypeModal}
+                                onClick={openCreateLogTypePage}
                                 type="button"
                             >
                                 New log type
@@ -702,7 +709,7 @@ const Tracker = () => {
                                 <p className="section-label">Log types</p>
                                 <h3>Shared log type library</h3>
                             </div>
-                            <button className="button button--secondary" onClick={openLogTypeModal} type="button">
+                            <button className="button button--secondary" onClick={openCreateLogTypePage} type="button">
                                 Add shared log type
                             </button>
                         </div>
