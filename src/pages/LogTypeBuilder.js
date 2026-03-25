@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useBeforeUnload, useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 
+import useConfirmationDialog from "../components/useConfirmationDialog";
 import { auth } from "../firebase";
 import { createUserLogType, getTracker } from "../services/firestore";
 
@@ -87,8 +88,24 @@ const LogTypeBuilder = () => {
     const [draggedFieldId, setDraggedFieldId] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState("");
+    const { confirm, confirmationDialog } = useConfirmationDialog();
 
     const returnTo = location.state?.returnTo || (trackerId ? `/trackers/${trackerId}` : DEFAULT_RETURN_PATH);
+    const hasUnsavedChanges = !isSaving && (draftName.trim() !== "" || fields.length > 0);
+    const navigationBlocker = useBlocker(hasUnsavedChanges);
+    const blockerRef = useRef(navigationBlocker);
+    const isConfirmingNavigationRef = useRef(false);
+
+    blockerRef.current = navigationBlocker;
+
+    useBeforeUnload((event) => {
+        if (!hasUnsavedChanges) {
+            return;
+        }
+
+        event.preventDefault();
+        event.returnValue = "";
+    });
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -136,6 +153,43 @@ const LogTypeBuilder = () => {
             isMounted = false;
         };
     }, [trackerId]);
+
+    useEffect(() => {
+        if (navigationBlocker.state !== "blocked" || isConfirmingNavigationRef.current) {
+            return;
+        }
+
+        let isMounted = true;
+        isConfirmingNavigationRef.current = true;
+
+        confirm({
+            title: "Discard unsaved changes?",
+            message: "You have unsaved changes in this log type builder. Leave this page and discard them?",
+            confirmLabel: "Leave page",
+            cancelLabel: "Stay here",
+            variant: "danger"
+        }).then((shouldLeave) => {
+            if (!isMounted) {
+                return;
+            }
+
+            isConfirmingNavigationRef.current = false;
+
+            if (shouldLeave) {
+                blockerRef.current.proceed();
+                return;
+            }
+
+            blockerRef.current.reset();
+        });
+
+        return () => {
+            isMounted = false;
+            if (navigationBlocker.state !== "blocked") {
+                isConfirmingNavigationRef.current = false;
+            }
+        };
+    }, [confirm, navigationBlocker.state]);
 
     const activeField = useMemo(() => {
         return fields.find((field) => field.id === activeFieldId) || null;
@@ -236,6 +290,7 @@ const LogTypeBuilder = () => {
     };
 
     return (
+        <>
         <main className="page page--log-type-builder">
             <section className="page-header">
                 <div>
@@ -496,6 +551,8 @@ const LogTypeBuilder = () => {
                 </form>
             )}
         </main>
+        {confirmationDialog}
+        </>
     );
 };
 

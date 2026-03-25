@@ -522,6 +522,16 @@
   justify-content: flex-end;
 }
 
+.confirmation-dialog {
+  width: min(100%, 560px);
+}
+
+.confirmation-dialog__message {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
 .builder-section {
   display: grid;
   gap: 1rem;

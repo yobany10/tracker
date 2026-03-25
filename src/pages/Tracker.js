@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
+import useConfirmationDialog from "../components/useConfirmationDialog";
 import {
     createTrackerLog,
     deleteUserLogType,
@@ -216,6 +217,7 @@ const Tracker = () => {
     const [trackerDraft, setTrackerDraft] = useState(createTrackerDraft(null));
     const [isSavingTracker, setIsSavingTracker] = useState(false);
     const [trackerError, setTrackerError] = useState("");
+    const { confirm, confirmationDialog } = useConfirmationDialog();
 
     useEffect(() => {
         const createdLogTypeId = location.state?.createdLogTypeId;
@@ -384,7 +386,15 @@ const Tracker = () => {
     };
 
     const handleDeleteLog = async (logId) => {
-        if (!window.confirm("Delete this log entry? This cannot be undone.")) {
+        const shouldDelete = await confirm({
+            title: "Delete this log entry?",
+            message: "This log entry will be permanently removed and cannot be undone.",
+            confirmLabel: "Delete log",
+            cancelLabel: "Keep log",
+            variant: "danger"
+        });
+
+        if (!shouldDelete) {
             return;
         }
 
@@ -566,9 +576,15 @@ const Tracker = () => {
             return;
         }
 
-        if (!window.confirm(
-            "Delete this shared log type? Any logs using it across your trackers will also be deleted. This cannot be undone."
-        )) {
+        const shouldDelete = await confirm({
+            title: "Delete this shared log type?",
+            message: "Any logs using it across your trackers will also be deleted. This cannot be undone.",
+            confirmLabel: "Delete log type",
+            cancelLabel: "Keep log type",
+            variant: "danger"
+        });
+
+        if (!shouldDelete) {
             return;
         }
 
@@ -1218,6 +1234,7 @@ const Tracker = () => {
                     </div>
                 </div>
             )}
+            {confirmationDialog}
         </main>
     );
 };
