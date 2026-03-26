@@ -173,11 +173,10 @@ const Home = () => {
         <main className="page page--home">
             <section className="hero-panel">
                 <div>
-                    <p className="hero-panel__eyebrow">Your trackers</p>
-                    <h2 className="hero-panel__title">Keep every routine in one place.</h2>
+                    <p className="hero-panel__eyebrow">Welcome!</p>
+                    <h2 className="hero-panel__title">Track anything you want. All in one place.</h2>
                     <p className="hero-panel__body">
-                        Create trackers for each workflow, then reuse the same custom log types
-                        across any tracker that needs them.
+                        Create trackers for different things, then use custom logs within your trackers.
                     </p>
                 </div>
 

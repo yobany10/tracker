@@ -1,13 +1,34 @@
+:root {
+  --color-seed: #ff9d2e;
+  --color-primary: #ff772e;
+  --color-secondary: #64748b;
+  --color-tertiary: #003585;
+  --color-neutral: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-soft: rgba(248, 250, 252, 0.92);
+  --color-surface-soft-strong: #3c3c3c;
+  --color-surface-tertiary: rgba(124, 114, 144, 0.1);
+  --color-surface-muted: rgba(100, 116, 139, 0.08);
+  --color-text: #1f2937;
+  --color-text-muted: #64748b;
+  --color-text-soft: #7c7290;
+  --color-danger: #b42318;
+  --border-subtle: rgba(100, 116, 139, 0.18);
+  --border-muted: rgba(100, 116, 139, 0.12);
+  --border-strong: rgba(100, 116, 139, 0.26);
+  --border-accent: rgba(26, 65, 204, 0.24);
+  --shadow-soft: 0 18px 45px rgba(26, 65, 204, 0.08);
+  --shadow-hover: 0 14px 30px rgba(26, 65, 204, 0.12);
+  --shadow-modal: 0 24px 64px rgba(31, 41, 55, 0.18);
+}
+
 body {
   margin: 0;
   font-family: "Avenir Next", "Segoe UI Variable", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background:
-    radial-gradient(circle at top left, rgba(124, 166, 109, 0.25), transparent 22%),
-    radial-gradient(circle at bottom right, rgba(216, 176, 117, 0.22), transparent 26%),
-    #f6f3ec;
-  color: #1e3932;
+  background: var(--color-neutral);
+  color: var(--color-text);
 }
 
 code {
@@ -31,7 +52,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 a:focus-visible {
-  outline: 3px solid rgba(29, 107, 87, 0.3);
+  outline: 3px solid rgba(46, 91, 255, 0.28);
   outline-offset: 2px;
 }
 
