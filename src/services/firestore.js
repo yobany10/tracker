@@ -3,6 +3,7 @@ import { db } from "../firebase";
 import {
     addDoc,
     collection,
+    deleteField,
     deleteDoc,
     doc,
     getDoc,
@@ -96,6 +97,16 @@ const mapSnapshot = (snapshot) => {
     return { id: snapshot.id, ...snapshot.data() };
 };
 
+const stripLegacyTrackerCategory = (tracker) => {
+    if (!tracker) {
+        return null;
+    }
+
+    const { category, ...trackerWithoutCategory } = tracker;
+
+    return trackerWithoutCategory;
+};
+
 const normalizeTrackerPayload = (data = {}) => {
     const input = toPlainObject(data);
     const name = normalizeText(input.name);
@@ -106,7 +117,6 @@ const normalizeTrackerPayload = (data = {}) => {
     return removeUndefinedDeep({
         ownerId: input.ownerId,
         name,
-        category: normalizeText(input.category),
         icon: normalizeText(input.icon),
         color: normalizeText(input.color),
         defaultLogTypeId: input.defaultLogTypeId || null,
@@ -124,10 +134,6 @@ const normalizeTrackerUpdatePayload = (data = {}) => {
         const name = normalizeText(input.name);
         assertRequired(name, "Tracker name");
         payload.name = name;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(input, "category")) {
-        payload.category = normalizeText(input.category);
     }
 
     if (Object.prototype.hasOwnProperty.call(input, "icon")) {
@@ -331,7 +337,9 @@ export const listUserTrackers = async (userId) => {
         return [];
     }
 
-    return listSnapshots(trackersCollection(), [where("ownerId", "==", userId)]);
+    const trackers = await listSnapshots(trackersCollection(), [where("ownerId", "==", userId)]);
+
+    return trackers.map(stripLegacyTrackerCategory);
 };
 
 const migrateLegacyLogTypesForUser = async (userId) => {
@@ -370,7 +378,7 @@ const migrateLegacyLogTypesForUser = async (userId) => {
 
 export const getTracker = async (trackerId) => {
     const snapshot = await getDoc(trackerDoc(trackerId));
-    return mapSnapshot(snapshot);
+    return stripLegacyTrackerCategory(mapSnapshot(snapshot));
 };
 
 export const createTracker = async (data = {}) => {
@@ -390,6 +398,7 @@ export const updateTracker = async (trackerId, data = {}) => {
 
     await updateDoc(trackerDoc(trackerId), {
         ...payload,
+        category: deleteField(),
         dateUpdated: serverTimestamp()
     });
 

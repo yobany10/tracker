@@ -40,8 +40,7 @@ const createLogTypeDraft = () => ({
 });
 
 const createTrackerDraft = (tracker) => ({
-    name: tracker?.name || "",
-    category: tracker?.category || ""
+    name: tracker?.name || ""
 });
 
 const normalizeFieldKey = (value) => {
@@ -626,8 +625,7 @@ const Tracker = () => {
 
         try {
             const payload = {
-                name,
-                category: trackerDraft.category.trim()
+                name
             };
 
             await updateTracker(trackerId, payload);
@@ -655,7 +653,6 @@ const Tracker = () => {
                 </div>
                 <div className="page-header__actions">
                     <div className="page-header__meta">
-                        <span className="tracker-card__badge">{tracker?.category || "General"}</span>
                         <span className="page-header__meta-count">{logs.length} logs</span>
                     </div>
                     <button className="button button--secondary" onClick={openTrackerModal} type="button">
@@ -1206,15 +1203,6 @@ const Tracker = () => {
                                     required
                                     value={trackerDraft.name}
                                     onChange={(event) => handleTrackerDraftChange("name", event.target.value)}
-                                />
-                            </label>
-
-                            <label className="field-group">
-                                <span>Category</span>
-                                <input
-                                    placeholder="Vehicle, Home, Family"
-                                    value={trackerDraft.category}
-                                    onChange={(event) => handleTrackerDraftChange("category", event.target.value)}
                                 />
                             </label>
 

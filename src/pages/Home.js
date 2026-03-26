@@ -10,8 +10,7 @@ import {
 } from "../services/firestore";
 
 const createTrackerDraft = () => ({
-    name: "",
-    category: ""
+    name: ""
 });
 
 const sortTrackersByName = (items) => {
@@ -145,15 +144,13 @@ const Home = () => {
         try {
             const trackerId = await createTracker({
                 ownerId: userId,
-                name: trimmedName,
-                category: trackerDraft.category.trim()
+                name: trimmedName
             });
 
             const trackerRecord = {
                 id: trackerId,
                 ownerId: userId,
                 name: trimmedName,
-                category: trackerDraft.category.trim(),
                 isArchived: false,
                 defaultLogTypeId: null
             };
@@ -327,9 +324,6 @@ const Home = () => {
                                         to={`/trackers/${tracker.id}`}
                                     >
                                         <div className="tracker-card__header">
-                                            <span className="tracker-card__badge">
-                                                {tracker.category || "General"}
-                                            </span>
                                             {tracker.isArchived && (
                                                 <span className="tracker-card__badge tracker-card__badge--muted">
                                                     Archived
@@ -378,15 +372,6 @@ const Home = () => {
                                     required
                                     value={trackerDraft.name}
                                     onChange={(event) => updateTrackerDraft("name", event.target.value)}
-                                />
-                            </label>
-
-                            <label className="field-group">
-                                <span>Category</span>
-                                <input
-                                    placeholder="Vehicle, Home, Family"
-                                    value={trackerDraft.category}
-                                    onChange={(event) => updateTrackerDraft("category", event.target.value)}
                                 />
                             </label>
 
