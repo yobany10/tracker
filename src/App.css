@@ -76,32 +76,96 @@
   color: var(--color-primary);
 }
 
-.topbar__user-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.8rem 1rem;
-  border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid var(--border-muted);
-}
-
 .topbar__session {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  justify-content: flex-end;
+}
+
+.topbar__session-panel {
+  display: grid;
+  justify-items: end;
+  gap: 0.45rem;
+}
+
+.topbar__profile-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.topbar__avatar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid var(--border-muted);
+  box-shadow: var(--shadow-soft);
+}
+
+.topbar__avatar--initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-soft-strong);
+  color: var(--color-neutral);
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.topbar__avatar--large {
+  width: 4.75rem;
+  height: 4.75rem;
 }
 
 .topbar__status {
   font-size: 0.78rem;
   color: var(--color-text-muted);
+  text-align: right;
 }
 
 .topbar__status--error {
   color: var(--color-danger);
 }
 
-.topbar__user-label,
+.topbar__account-modal {
+  width: min(100%, 440px);
+}
+
+.topbar__account-body {
+  gap: 1.25rem;
+}
+
+.topbar__account-summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.topbar__account-copy {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.topbar__account-name {
+  font-size: 1.05rem;
+}
+
+.topbar__account-email {
+  color: var(--color-text-muted);
+  word-break: break-word;
+}
+
+.topbar__account-error {
+  margin: 0;
+  color: var(--color-danger);
+}
+
 .section-label {
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -750,8 +814,19 @@
     align-items: stretch;
   }
 
-  .topbar__user-card {
+  .topbar__session-panel,
+  .topbar__status {
+    justify-items: stretch;
+    text-align: left;
+  }
+
+  .topbar__profile-button {
+    align-self: flex-start;
+  }
+
+  .topbar__account-summary {
     width: 100%;
+    align-items: flex-start;
   }
 
   .topbar__session,
