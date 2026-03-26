@@ -3,8 +3,6 @@
 }
 
 .topbar {
-  position: sticky;
-  top: 0;
   z-index: 20;
   backdrop-filter: blur(20px);
   background: rgba(248, 250, 252, 0.92);
@@ -17,14 +15,14 @@
   padding: 1rem 1.5rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 2rem;
 }
 
 .topbar__brand {
   display: flex;
   align-items: center;
   gap: 0.9rem;
+  flex-shrink: 0;
   text-decoration: none;
   color: inherit;
 }
@@ -60,6 +58,8 @@
 .topbar__nav {
   display: flex;
   align-items: center;
+  flex: 1;
+  flex-wrap: wrap;
   gap: 0.75rem;
 }
 
@@ -80,6 +80,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  margin-left: auto;
 }
 
 .topbar__session-panel {
@@ -647,6 +648,11 @@
   border-radius: 1.2rem;
   background: var(--color-surface-soft);
   border: 1px solid var(--border-muted);
+}
+
+.builder-card h4,
+.builder-card p {
+  margin: 0;
 }
 
 .field-builder {

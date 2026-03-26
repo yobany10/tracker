@@ -98,14 +98,18 @@ const Home = () => {
         setIsCreateTrackerModalOpen(true);
     };
 
+    const resetCreateTrackerModalState = () => {
+        setIsCreateTrackerModalOpen(false);
+        setCreateTrackerError("");
+        setTrackerDraft(createTrackerDraft());
+    };
+
     const closeCreateTrackerModal = () => {
         if (isCreatingTracker) {
             return;
         }
 
-        setIsCreateTrackerModalOpen(false);
-        setCreateTrackerError("");
-        setTrackerDraft(createTrackerDraft());
+        resetCreateTrackerModalState();
     };
 
     const openCreateLogTypePage = () => {
@@ -158,7 +162,7 @@ const Home = () => {
             setTrackers((currentTrackers) =>
                 sortTrackersByName([...currentTrackers, trackerRecord])
             );
-            closeCreateTrackerModal();
+            resetCreateTrackerModalState();
         } catch (submitError) {
             setCreateTrackerError(submitError.message || "Unable to create the tracker.");
         } finally {

@@ -135,11 +135,28 @@ const Navbar = () => {
                     <nav className="topbar__nav" aria-label="Primary">
                         <NavLink
                             to="/"
+                            end
                             className={({ isActive }) =>
                                 isActive ? "topbar__link topbar__link--active" : "topbar__link"
                             }
                         >
                             Home
+                        </NavLink>
+                        <NavLink
+                            to="/trackers"
+                            className={({ isActive }) =>
+                                isActive ? "topbar__link topbar__link--active" : "topbar__link"
+                            }
+                        >
+                            Trackers
+                        </NavLink>
+                        <NavLink
+                            to="/log-types"
+                            className={({ isActive }) =>
+                                isActive ? "topbar__link topbar__link--active" : "topbar__link"
+                            }
+                        >
+                            Log Types
                         </NavLink>
                     </nav>
 

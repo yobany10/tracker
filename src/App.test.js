@@ -27,7 +27,8 @@ jest.mock("./firebase", () => ({
 
 jest.mock("react-router-dom", () => ({
   Link: ({ children, ...props }) => <a {...props}>{children}</a>,
-  NavLink: ({ children, className, ...props }) => {
+  NavLink: ({ children, className, end, ...props }) => {
+    void end;
     const resolvedClassName = typeof className === "function" ? className({ isActive: false }) : className;
     return <a className={resolvedClassName} {...props}>{children}</a>;
   }
