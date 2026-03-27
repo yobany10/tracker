@@ -308,11 +308,11 @@
 }
 
 .page-header__meta-count {
-  padding: 0.65rem 0.95rem;
+  padding: 5px 20px;
   border-radius: 999px;
-  background: var(--color-surface-soft);
-  color: var(--color-primary);
-  font-weight: 700;
+  color: var(--color-secondary);
+  font-weight: 500;
+  border: 2px solid var(--color-secondary);
 }
 
 .tracker-grid {
@@ -346,12 +346,11 @@
 .tracker-card__badge {
   display: inline-flex;
   align-items: center;
-  padding: 0.4rem 0.7rem;
+  padding: 5px 20px;
   border-radius: 999px;
-  background: var(--color-tertiary);
-  color: white;
-  font-size: 0.82rem;
+  color: var(--color-secondary);
   font-weight: 500;
+  border: 2px solid var(--color-secondary);
 }
 
 .tracker-card__badge--muted {
@@ -447,7 +446,7 @@
 
 .button--ghost {
   background: transparent;
-  color: var(--color-primary);
+  color: var(--color-secondary);
   border: 1px solid var(--border-accent);
 }
 
@@ -476,30 +475,37 @@
 }
 
 .log-card {
+  display: flex;
+  flex-direction: column;
   padding: 1.25rem;
   border-radius: 1.3rem;
   background: rgba(255, 255, 255, 0.88);
-  border: 1px solid var(--border-muted);
+  border: 3px solid var(--border-strong);
 }
 
 .log-card__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
 .log-card__header-actions {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.9rem;
-  flex-direction: column;
 }
 
 .log-card__timestamp {
   color: var(--color-text-muted);
   font-size: 0.92rem;
   white-space: nowrap;
+}
+
+.log-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
 }
 
 .log-card__fields {
@@ -512,12 +518,12 @@
 .log-card__field {
   padding: 0.9rem;
   border-radius: 1rem;
+  border: 1px solid var(--border-strong);
   background: var(--color-surface-soft);
 }
 
 .log-card__field dt {
   margin-bottom: 0.35rem;
-  color: var(--color-secondary);
   font-size: 0.82rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;

@@ -706,6 +706,24 @@ const Tracker = () => {
                             </button>
 
                             <button
+                                className="button button--secondary"
+                                disabled={!selectedLogType}
+                                onClick={() => openEditLogTypeModal(selectedLogType)}
+                                type="button"
+                            >
+                                Edit log type
+                            </button>
+
+                            <button
+                                className="button button--ghost-danger"
+                                disabled={!selectedLogType || deletingLogTypeId === selectedLogType.id}
+                                onClick={() => handleDeleteLogType(selectedLogType)}
+                                type="button"
+                            >
+                                {deletingLogTypeId === selectedLogType?.id ? "Deleting..." : "Delete log type"}
+                            </button>
+
+                            <button
                                 className="button button--primary"
                                 disabled={!selectedLogType}
                                 onClick={openCreateLogModal}
@@ -714,70 +732,6 @@ const Tracker = () => {
                                 Add log
                             </button>
                         </div>
-                    </section>
-
-                    <section className="panel">
-                        <div className="panel__header">
-                            <div>
-                                <p className="section-label">Log types</p>
-                                <h3>Shared log type library</h3>
-                            </div>
-                            <button className="button button--secondary" onClick={openCreateLogTypePage} type="button">
-                                Add shared log type
-                            </button>
-                        </div>
-
-                        {logTypes.length === 0 && (
-                            <div className="empty-state">
-                                <h4>No log types configured</h4>
-                                <p>
-                                    Create a shared log type here or on the home page before adding logs.
-                                </p>
-                            </div>
-                        )}
-
-                        {logTypes.length > 0 && (
-                            <div className="builder-stack builder-stack--dense">
-                                {logTypes.map((logType) => (
-                                    <article className="builder-card" key={logType.id}>
-                                        <div className="builder-card__header">
-                                            <div>
-                                                <p className="section-label">Shared log type</p>
-                                                <h4>{logType.name}</h4>
-                                            </div>
-                                            <div className="card-actions">
-                                                <span className="tracker-card__badge">
-                                                    {(logType.fields || []).length} fields
-                                                </span>
-                                                <button
-                                                    className="button button--ghost"
-                                                    onClick={() => openEditLogTypeModal(logType)}
-                                                    type="button"
-                                                >
-                                                    Edit
-                                                </button>
-                                                <button
-                                                    className="button button--ghost-danger"
-                                                    disabled={deletingLogTypeId === logType.id}
-                                                    onClick={() => handleDeleteLogType(logType)}
-                                                    type="button"
-                                                >
-                                                    {deletingLogTypeId === logType.id ? "Deleting..." : "Delete"}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="pill-row">
-                                            {(logType.fields || []).map((field) => (
-                                                <span className="info-pill" key={field.id}>
-                                                    {field.label}
-                                                    {field.unitLabel ? ` (${field.unitLabel})` : ""}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </article>
-                                ))}
-                            </div>
-                        )}
                     </section>
 
                     <section className="panel">
@@ -805,18 +759,10 @@ const Tracker = () => {
                                     return (
                                         <article className="log-card" key={log.id}>
                                             <div className="log-card__header">
-                                                <div>
-                                                    <span className="tracker-card__badge">
-                                                        {logType?.name || "Custom log"}
-                                                    </span>
-                                                    <h4>{log.title || logType?.name || "Log entry"}</h4>
-                                                </div>
+                                                <span className="tracker-card__badge">
+                                                    {logType?.name || "Custom log"}
+                                                </span>
                                                 <div className="log-card__header-actions">
-                                                    <span className="log-card__timestamp">
-                                                        {formatDateTime(
-                                                            log.loggedAt || log.eventDate || log.dateCreated
-                                                        )}
-                                                    </span>
                                                     <div className="card-actions">
                                                         <button
                                                             className="button button--ghost"
@@ -847,6 +793,14 @@ const Tracker = () => {
                                             </dl>
 
                                             {log.notes && <p className="log-card__notes">{log.notes}</p>}
+
+                                            <div className="log-card__footer">
+                                                <span className="log-card__timestamp">
+                                                    {`Created: ${formatDateTime(
+                                                        log.loggedAt || log.eventDate || log.dateCreated
+                                                    )}`}
+                                                </span>
+                                            </div>
                                         </article>
                                     );
                                 })}
