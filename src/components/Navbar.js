@@ -4,6 +4,21 @@ import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 
 import { auth, googleProvider } from "../firebase";
 
+const MOBILE_NAV_MEDIA_QUERY = "(max-width: 820px)";
+const NAV_LINKS = [
+    { to: "/", label: "Home", end: true },
+    { to: "/trackers", label: "Trackers" },
+    { to: "/log-types", label: "Log Types" }
+];
+
+const getIsMobileViewport = () => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+        return false;
+    }
+
+    return window.matchMedia(MOBILE_NAV_MEDIA_QUERY)?.matches ?? false;
+};
+
 const getUserInitials = (user) => {
     const nameSource = user?.displayName?.trim();
 
@@ -35,6 +50,8 @@ const Navbar = () => {
     const [isAuthenticating, setIsAuthenticating] = useState(false);
     const [authError, setAuthError] = useState("");
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+    const [isMobileViewport, setIsMobileViewport] = useState(getIsMobileViewport);
+    const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -53,13 +70,50 @@ const Navbar = () => {
     }, []);
 
     useEffect(() => {
-        if (!isAccountModalOpen) {
+        if (!window.matchMedia) {
+            return undefined;
+        }
+
+        const mediaQueryList = window.matchMedia(MOBILE_NAV_MEDIA_QUERY);
+
+        if (!mediaQueryList) {
+            return undefined;
+        }
+
+        const handleViewportChange = (event) => {
+            setIsMobileViewport(event.matches);
+
+            if (!event.matches) {
+                setIsMobileNavOpen(false);
+            }
+        };
+
+        setIsMobileViewport(mediaQueryList.matches);
+
+        if (mediaQueryList.addEventListener) {
+            mediaQueryList.addEventListener("change", handleViewportChange);
+
+            return () => {
+                mediaQueryList.removeEventListener("change", handleViewportChange);
+            };
+        }
+
+        mediaQueryList.addListener(handleViewportChange);
+
+        return () => {
+            mediaQueryList.removeListener(handleViewportChange);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isAccountModalOpen && !isMobileNavOpen) {
             return undefined;
         }
 
         const handleKeyDown = (event) => {
             if (event.key === "Escape") {
                 setIsAccountModalOpen(false);
+                setIsMobileNavOpen(false);
             }
         };
 
@@ -68,7 +122,7 @@ const Navbar = () => {
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [isAccountModalOpen]);
+    }, [isAccountModalOpen, isMobileNavOpen]);
 
     const handleSignIn = async () => {
         setIsAuthenticating(true);
@@ -100,6 +154,13 @@ const Navbar = () => {
 
     const userEmail = currentUser?.email || "Google account";
     const userInitials = getUserInitials(currentUser);
+    const isNavExpanded = !isMobileViewport || isMobileNavOpen;
+
+    const handleNavLinkClick = () => {
+        if (isMobileViewport) {
+            setIsMobileNavOpen(false);
+        }
+    };
 
     const renderAvatar = (sizeClassName = "") => {
         if (currentUser?.photoURL) {
@@ -124,70 +185,85 @@ const Navbar = () => {
         <>
             <header className="topbar">
                 <div className="topbar__content">
-                    <Link className="topbar__brand" to="/">
-                        <span className="topbar__brand-mark">TR</span>
-                        <div>
-                            <p className="topbar__eyebrow">Life tracking</p>
-                            <h1>Tracker</h1>
-                        </div>
-                    </Link>
+                    <div className="topbar__header-row">
+                        <Link className="topbar__brand" to="/">
+                            <span className="topbar__brand-mark">TR</span>
+                            <div>
+                                <p className="topbar__eyebrow">Life tracking</p>
+                                <h1>Tracker</h1>
+                            </div>
+                        </Link>
 
-                    <nav className="topbar__nav" aria-label="Primary">
-                        <NavLink
-                            to="/"
-                            end
-                            className={({ isActive }) =>
-                                isActive ? "topbar__link topbar__link--active" : "topbar__link"
-                            }
+                        <nav
+                            aria-label="Primary"
+                            className={`topbar__nav ${isNavExpanded ? "topbar__nav--open" : "topbar__nav--collapsed"}`}
+                            hidden={isMobileViewport && !isMobileNavOpen}
+                            id="primary-navigation"
                         >
-                            Home
-                        </NavLink>
-                        <NavLink
-                            to="/trackers"
-                            className={({ isActive }) =>
-                                isActive ? "topbar__link topbar__link--active" : "topbar__link"
-                            }
-                        >
-                            Trackers
-                        </NavLink>
-                        <NavLink
-                            to="/log-types"
-                            className={({ isActive }) =>
-                                isActive ? "topbar__link topbar__link--active" : "topbar__link"
-                            }
-                        >
-                            Log Types
-                        </NavLink>
-                    </nav>
-
-                    <div className="topbar__session">
-                        <div className="topbar__session-panel">
-                            {currentUser ? (
-                                <button
-                                    aria-expanded={isAccountModalOpen}
-                                    aria-haspopup="dialog"
-                                    aria-label={`Open account details for ${userLabel}`}
-                                    className="topbar__profile-button"
-                                    disabled={isAuthenticating}
-                                    onClick={() => setIsAccountModalOpen(true)}
-                                    type="button"
+                            {NAV_LINKS.map(({ to, label, end }) => (
+                                <NavLink
+                                    key={to}
+                                    className={({ isActive }) =>
+                                        isActive ? "topbar__link topbar__link--active" : "topbar__link"
+                                    }
+                                    end={end}
+                                    onClick={handleNavLinkClick}
+                                    to={to}
                                 >
-                                    {renderAvatar()}
-                                </button>
-                            ) : (
-                                <button
-                                    className="button button--primary"
-                                    disabled={isAuthenticating}
-                                    onClick={handleSignIn}
-                                    type="button"
-                                >
-                                    {isAuthenticating ? "Signing in..." : "Sign in with Google"}
-                                </button>
-                            )}
+                                    {label}
+                                </NavLink>
+                            ))}
+                        </nav>
 
-                            {authError && (
-                                <span className="topbar__status topbar__status--error">{authError}</span>
-                            )}
+                        <div className="topbar__session">
+                            <div className="topbar__session-panel">
+                                <div className="topbar__session-controls">
+                                    {isMobileViewport && (
+                                        <button
+                                            aria-controls="primary-navigation"
+                                            aria-expanded={isMobileNavOpen}
+                                            aria-label={isMobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+                                            className="topbar__menu-button"
+                                            onClick={() => setIsMobileNavOpen((previousState) => !previousState)}
+                                            type="button"
+                                        >
+                                            <span className="topbar__menu-label">
+                                                {isMobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+                                            </span>
+                                            <span aria-hidden="true" className="topbar__menu-icon" />
+                                            <span aria-hidden="true" className="topbar__menu-icon" />
+                                            <span aria-hidden="true" className="topbar__menu-icon" />
+                                        </button>
+                                    )}
+
+                                    {currentUser ? (
+                                        <button
+                                            aria-expanded={isAccountModalOpen}
+                                            aria-haspopup="dialog"
+                                            aria-label={`Open account details for ${userLabel}`}
+                                            className="topbar__profile-button"
+                                            disabled={isAuthenticating}
+                                            onClick={() => setIsAccountModalOpen(true)}
+                                            type="button"
+                                        >
+                                            {renderAvatar()}
+                                        </button>
+                                    ) : (
+                                        <button
+                                            className="button button--primary"
+                                            disabled={isAuthenticating}
+                                            onClick={handleSignIn}
+                                            type="button"
+                                        >
+                                            {isAuthenticating ? "Signing in..." : "Sign in with Google"}
+                                        </button>
+                                    )}
+                                </div>
+
+                                {authError && (
+                                    <span className="topbar__status topbar__status--error">{authError}</span>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -246,7 +322,7 @@ const Navbar = () => {
                 </div>
             )}
         </>
-    )
-}
+    );
+};
 
 export default Navbar;
