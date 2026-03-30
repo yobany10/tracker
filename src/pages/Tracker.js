@@ -234,6 +234,29 @@ const Tracker = () => {
         }, {});
     }, [logTypes]);
 
+    const logTableColumns = useMemo(() => {
+        const columns = [];
+        const seenKeys = new Set();
+
+        logs.forEach((log) => {
+            const logType = logTypesById[log.logTypeId];
+
+            (logType?.fields || []).forEach((field) => {
+                if (seenKeys.has(field.key)) {
+                    return;
+                }
+
+                seenKeys.add(field.key);
+                columns.push({
+                    key: field.key,
+                    label: field.label
+                });
+            });
+        });
+
+        return columns;
+    }, [logs, logTypesById]);
+
     const openCreateLogModal = () => {
         if (!selectedLogType) {
             return;
@@ -507,58 +530,91 @@ const Tracker = () => {
                         )}
 
                         {logs.length > 0 && (
-                            <div className="log-list">
-                                {logs.map((log) => {
-                                    const logType = logTypesById[log.logTypeId];
+                            <div className="log-table-wrapper">
+                                <table className="log-table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Log type</th>
+                                            {logTableColumns.map((column) => (
+                                                <th key={column.key} scope="col">
+                                                    {column.label}
+                                                </th>
+                                            ))}
+                                            <th scope="col">Notes</th>
+                                            <th scope="col">Created</th>
+                                            <th scope="col" className="log-table__actions-header">
+                                                Actions
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {logs.map((log) => {
+                                            const logType = logTypesById[log.logTypeId];
+                                            const fields = logType?.fields || [];
+                                            const createdAt = formatDateTime(
+                                                log.loggedAt || log.eventDate || log.dateCreated
+                                            );
 
-                                    return (
-                                        <article className="log-card" key={log.id}>
-                                            <div className="log-card__header">
-                                                <span className="tracker-card__badge">
-                                                    {logType?.name || "Custom log"}
-                                                </span>
-                                                <div className="log-card__header-actions">
-                                                    <div className="card-actions">
-                                                        <button
-                                                            className="button button--ghost"
-                                                            onClick={() => openEditLogModal(log)}
-                                                            type="button"
-                                                        >
-                                                            Edit
-                                                        </button>
-                                                        <button
-                                                            className="button button--ghost-danger"
-                                                            disabled={deletingLogId === log.id}
-                                                            onClick={() => handleDeleteLog(log.id)}
-                                                            type="button"
-                                                        >
-                                                            {deletingLogId === log.id ? "Deleting..." : "Delete"}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                            return (
+                                                <tr key={log.id}>
+                                                    <td>
+                                                        <span className="log-table__cell">
+                                                            {logType?.name || "Custom log"}
+                                                        </span>
+                                                    </td>
+                                                    {logTableColumns.map((column) => {
+                                                        const matchingField = fields.find(
+                                                            (field) => field.key === column.key
+                                                        );
 
-                                            <dl className="log-card__fields">
-                                                {(logType?.fields || []).map((field) => (
-                                                    <div className="log-card__field" key={field.id}>
-                                                        <dt>{field.label}</dt>
-                                                        <dd>{formatFieldValue(log.values?.[field.key], field)}</dd>
-                                                    </div>
-                                                ))}
-                                            </dl>
-
-                                            {log.notes && <p className="log-card__notes">{log.notes}</p>}
-
-                                            <div className="log-card__footer">
-                                                <span className="log-card__timestamp">
-                                                    {`Created: ${formatDateTime(
-                                                        log.loggedAt || log.eventDate || log.dateCreated
-                                                    )}`}
-                                                </span>
-                                            </div>
-                                        </article>
-                                    );
-                                })}
+                                                        return (
+                                                            <td
+                                                                className="log-table__field-cell"
+                                                                key={`${log.id}-${column.key}`}
+                                                            >
+                                                                {matchingField ? (
+                                                                    formatFieldValue(
+                                                                        log.values?.[column.key],
+                                                                        matchingField
+                                                                    )
+                                                                ) : (
+                                                                    <span className="log-table__empty">-</span>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                    <td className="log-table__cell log-table__cell--notes">
+                                                        {log.notes ? (
+                                                            <p className="log-table__notes">{log.notes}</p>
+                                                        ) : (
+                                                            <span className="log-table__empty">No notes</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="log-table__timestamp">{createdAt}</td>
+                                                    <td className="log-table__actions-cell">
+                                                        <div className="log-table__actions">
+                                                            <button
+                                                                className="button button--ghost"
+                                                                onClick={() => openEditLogModal(log)}
+                                                                type="button"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                            <button
+                                                                className="button button--ghost-danger"
+                                                                disabled={deletingLogId === log.id}
+                                                                onClick={() => handleDeleteLog(log.id)}
+                                                                type="button"
+                                                            >
+                                                                {deletingLogId === log.id ? "Deleting..." : "Delete"}
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </section>
