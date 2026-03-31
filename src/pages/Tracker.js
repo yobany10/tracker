@@ -24,6 +24,21 @@ const createTrackerDraft = (tracker) => ({
     logFields: cloneLogFields(tracker?.logFields || [])
 });
 
+const parseDateValue = (value) => {
+    if (typeof value !== "string") {
+        return new Date(value);
+    }
+
+    const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (dateOnlyMatch) {
+        const [, year, month, day] = dateOnlyMatch;
+        return new Date(Number(year), Number(month) - 1, Number(day));
+    }
+
+    return new Date(value);
+};
+
 const formatDateTime = (value) => {
     if (!value) {
         return "Not set";
@@ -31,20 +46,26 @@ const formatDateTime = (value) => {
 
     if (typeof value?.toDate === "function") {
         return new Intl.DateTimeFormat("en-US", {
-            dateStyle: "medium",
-            timeStyle: "short"
+            month: "numeric",
+            day: "numeric",
+            year: "2-digit",
+            hour: "numeric",
+            minute: "2-digit"
         }).format(value.toDate());
     }
 
-    const parsedDate = new Date(value);
+    const parsedDate = parseDateValue(value);
 
     if (Number.isNaN(parsedDate.getTime())) {
         return String(value);
     }
 
     return new Intl.DateTimeFormat("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short"
+        month: "numeric",
+        day: "numeric",
+        year: "2-digit",
+        hour: "numeric",
+        minute: "2-digit"
     }).format(parsedDate);
 };
 
@@ -75,6 +96,32 @@ const formatTimeValue = (value) => {
     }).format(parsedDate).toLowerCase();
 };
 
+const formatDateValue = (value) => {
+    if (!value) {
+        return "Not provided";
+    }
+
+    if (typeof value?.toDate === "function") {
+        return new Intl.DateTimeFormat("en-US", {
+            month: "numeric",
+            day: "numeric",
+            year: "2-digit"
+        }).format(value.toDate());
+    }
+
+    const parsedDate = parseDateValue(value);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+        return String(value);
+    }
+
+    return new Intl.DateTimeFormat("en-US", {
+        month: "numeric",
+        day: "numeric",
+        year: "2-digit"
+    }).format(parsedDate);
+};
+
 const formatFieldValue = (value, field) => {
     if (value === null || value === undefined || value === "") {
         return "Not provided";
@@ -86,6 +133,10 @@ const formatFieldValue = (value, field) => {
 
     if (field?.type === "time") {
         return formatTimeValue(value);
+    }
+
+    if (field?.type === "date") {
+        return formatDateValue(value);
     }
 
     if (typeof value?.toDate === "function") {
