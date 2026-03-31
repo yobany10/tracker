@@ -7,8 +7,7 @@ import { auth, googleProvider } from "../firebase";
 const MOBILE_NAV_MEDIA_QUERY = "(max-width: 820px)";
 const NAV_LINKS = [
     { to: "/", label: "Home", end: true },
-    { to: "/trackers", label: "Trackers" },
-    { to: "/log-types", label: "Log Types" }
+    { to: "/trackers", label: "Trackers" }
 ];
 
 const getIsMobileViewport = () => {

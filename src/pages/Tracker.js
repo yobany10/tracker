@@ -1,19 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
+import LogFieldsEditor from "../components/LogFieldsEditor";
 import useConfirmationDialog from "../components/useConfirmationDialog";
 import {
     createTrackerLog,
     deleteTrackerLog,
     getTracker,
     listTrackerLogs,
-    listUserLogTypes,
     updateTracker,
     updateTrackerLog
 } from "../services/firestore";
 
+const cloneLogFields = (fields = []) => {
+    return fields.map((field) => ({
+        ...field,
+        options: Array.isArray(field.options) ? [...field.options] : []
+    }));
+};
+
 const createTrackerDraft = (tracker) => ({
-    name: tracker?.name || ""
+    name: tracker?.name || "",
+    logFields: cloneLogFields(tracker?.logFields || [])
 });
 
 const formatDateTime = (value) => {
@@ -114,12 +122,8 @@ const sortLogsByNewest = (items) => {
     });
 };
 
-const sortLogTypesByName = (items) => {
-    return [...items].sort((left, right) => left.name.localeCompare(right.name));
-};
-
-const buildInitialFormState = (logType, log) => {
-    return (logType?.fields || []).reduce((values, field) => {
+const buildInitialFormState = (tracker, log) => {
+    return (tracker?.logFields || []).reduce((values, field) => {
         values[field.key] = log?.values?.[field.key] ?? getDefaultValue(field);
         return values;
     }, {});
@@ -141,12 +145,8 @@ const getFieldInputValue = (field, event) => {
 
 const Tracker = () => {
     const { trackerId } = useParams();
-    const location = useLocation();
-    const navigate = useNavigate();
     const [tracker, setTracker] = useState(null);
-    const [logTypes, setLogTypes] = useState([]);
     const [logs, setLogs] = useState([]);
-    const [selectedLogTypeId, setSelectedLogTypeId] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState("");
@@ -162,20 +162,6 @@ const Tracker = () => {
     const { confirm, confirmationDialog } = useConfirmationDialog();
 
     useEffect(() => {
-        const createdLogTypeId = location.state?.createdLogTypeId;
-
-        if (!createdLogTypeId || !logTypes.some((logType) => logType.id === createdLogTypeId)) {
-            return;
-        }
-
-        setSelectedLogTypeId(createdLogTypeId);
-        navigate(location.pathname, {
-            replace: true,
-            state: {}
-        });
-    }, [location.pathname, location.state, logTypes, navigate]);
-
-    useEffect(() => {
         let isMounted = true;
 
         const loadTrackerData = async () => {
@@ -189,21 +175,14 @@ const Tracker = () => {
                     throw new Error("Tracker not found.");
                 }
 
-                const [logTypeResults, logResults] = await Promise.all([
-                    listUserLogTypes(trackerResult.ownerId),
-                    listTrackerLogs(trackerId)
-                ]);
+                const logResults = await listTrackerLogs(trackerId);
 
                 if (!isMounted) {
                     return;
                 }
 
-                const orderedLogTypes = sortLogTypesByName(logTypeResults);
-
                 setTracker(trackerResult);
-                setLogTypes(orderedLogTypes);
                 setLogs(sortLogsByNewest(logResults));
-                setSelectedLogTypeId(trackerResult?.defaultLogTypeId || orderedLogTypes[0]?.id || "");
             } catch (loadError) {
                 if (isMounted) {
                     setError(loadError.message || "Unable to load this tracker.");
@@ -222,63 +201,33 @@ const Tracker = () => {
         };
     }, [trackerId]);
 
-    const selectedLogType = useMemo(
-        () => logTypes.find((logType) => logType.id === selectedLogTypeId) || null,
-        [logTypes, selectedLogTypeId]
-    );
-
-    const logTypesById = useMemo(() => {
-        return logTypes.reduce((lookup, logType) => {
-            lookup[logType.id] = logType;
-            return lookup;
-        }, {});
-    }, [logTypes]);
-
     const logTableColumns = useMemo(() => {
-        const columns = [];
-        const seenKeys = new Set();
-
-        logs.forEach((log) => {
-            const logType = logTypesById[log.logTypeId];
-
-            (logType?.fields || []).forEach((field) => {
-                if (seenKeys.has(field.key)) {
-                    return;
-                }
-
-                seenKeys.add(field.key);
-                columns.push({
-                    key: field.key,
-                    label: field.label
-                });
-            });
-        });
-
-        return columns;
-    }, [logs, logTypesById]);
+        return (tracker?.logFields || []).map((field) => ({
+            key: field.key,
+            label: field.label,
+            type: field.type
+        }));
+    }, [tracker]);
 
     const openCreateLogModal = () => {
-        if (!selectedLogType) {
+        if (!tracker?.logFields?.length) {
             return;
         }
 
         setActiveLog(null);
-        setFormValues(buildInitialFormState(selectedLogType));
+        setFormValues(buildInitialFormState(tracker));
         setLogNotes("");
         setIsLogModalOpen(true);
     };
 
     const openEditLogModal = (log) => {
-        const logType = logTypesById[log.logTypeId];
-
-        if (!logType) {
-            setError("This log uses a log type that could not be loaded.");
+        if (!tracker?.logFields?.length) {
+            setError("Add fields to this tracker before editing logs.");
             return;
         }
 
-        setSelectedLogTypeId(log.logTypeId);
         setActiveLog(log);
-        setFormValues(buildInitialFormState(logType, log));
+        setFormValues(buildInitialFormState(tracker, log));
         setLogNotes(log.notes || "");
         setIsLogModalOpen(true);
     };
@@ -304,9 +253,7 @@ const Tracker = () => {
     const handleSubmitLog = async (event) => {
         event.preventDefault();
 
-        const currentLogType = activeLog ? logTypesById[activeLog.logTypeId] : selectedLogType;
-
-        if (!currentLogType) {
+        if (!tracker) {
             return;
         }
 
@@ -314,11 +261,10 @@ const Tracker = () => {
         setError("");
 
         try {
-            const firstDateField = currentLogType.fields?.find((field) => field.type === "date");
-            const firstTimeField = currentLogType.fields?.find((field) => field.type === "time");
+            const firstDateField = tracker.logFields?.find((field) => field.type === "date");
+            const firstTimeField = tracker.logFields?.find((field) => field.type === "time");
             const payload = {
-                logTypeId: currentLogType.id,
-                title: `${currentLogType.name} log`,
+                title: `${tracker.name} log`,
                 notes: logNotes,
                 values: formValues,
                 eventDate: firstDateField ? formValues[firstDateField.key] || null : null,
@@ -330,8 +276,10 @@ const Tracker = () => {
                 await updateTrackerLog(trackerId, activeLog.id, payload);
 
                 setLogs((currentLogs) =>
-                    currentLogs.map((log) =>
-                        log.id === activeLog.id ? { ...log, ...payload, id: activeLog.id } : log
+                    sortLogsByNewest(
+                        currentLogs.map((log) =>
+                            log.id === activeLog.id ? { ...log, ...payload, id: activeLog.id } : log
+                        )
                     )
                 );
             } else {
@@ -375,14 +323,6 @@ const Tracker = () => {
         }
     };
 
-    const openCreateLogTypePage = () => {
-        navigate(`/trackers/${trackerId}/log-types/new`, {
-            state: {
-                returnTo: `/trackers/${trackerId}`
-            }
-        });
-    };
-
     const openTrackerModal = () => {
         setTrackerDraft(createTrackerDraft(tracker));
         setTrackerError("");
@@ -421,7 +361,8 @@ const Tracker = () => {
 
         try {
             const payload = {
-                name
+                name,
+                logFields: cloneLogFields(trackerDraft.logFields)
             };
 
             await updateTracker(trackerId, payload);
@@ -441,11 +382,11 @@ const Tracker = () => {
         <main className="page page--tracker">
             <section className="page-header">
                 <div>
-                    <Link className="page-header__back-link" to="/">
+                    <Link className="page-header__back-link" to="/trackers">
                         Back to trackers
                     </Link>
                     <h2>{tracker?.name || "Tracker"}</h2>
-                    <p>Use shared log types to record exactly what matters for this tracker.</p>
+                    <p>Define the fields this tracker uses, then log activity against that schema.</p>
                 </div>
                 <div className="page-header__actions">
                     <div className="page-header__meta">
@@ -469,41 +410,27 @@ const Tracker = () => {
                 </section>
             )}
 
-            {!isLoading && !error && (
+            {!isLoading && !error && tracker && (
                 <>
                     <section className="panel tracker-toolbar">
                         <div>
                             <p className="section-label">Log entry</p>
-                            <h3>Select a log type</h3>
+                            <h3>
+                                {tracker.logFields?.length
+                                    ? "Add a new log using this tracker's fields"
+                                    : "Set up log fields before adding entries"}
+                            </h3>
                         </div>
 
                         <div className="tracker-toolbar__actions">
-                            <label className="field-group field-group--compact">
-                                <span>Log type</span>
-                                <select
-                                    value={selectedLogTypeId}
-                                    onChange={(event) => setSelectedLogTypeId(event.target.value)}
-                                >
-                                    {logTypes.length === 0 && <option value="">No log types yet</option>}
-                                    {logTypes.map((logType) => (
-                                        <option key={logType.id} value={logType.id}>
-                                            {logType.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-
-                            <button
-                                className="button button--secondary"
-                                onClick={openCreateLogTypePage}
-                                type="button"
-                            >
-                                New log type
+                            <span className="tracker-card__badge">{tracker.logFields?.length || 0} fields</span>
+                            <button className="button button--secondary" onClick={openTrackerModal} type="button">
+                                Manage fields
                             </button>
 
                             <button
                                 className="button button--primary"
-                                disabled={!selectedLogType}
+                                disabled={!tracker.logFields?.length}
                                 onClick={openCreateLogModal}
                                 type="button"
                             >
@@ -520,12 +447,17 @@ const Tracker = () => {
                             </div>
                         </div>
 
-                        {logTypes.length > 0 && logs.length === 0 && (
+                        {!tracker.logFields?.length && (
+                            <div className="empty-state">
+                                <h4>No log fields configured</h4>
+                                <p>Open the tracker editor and add the fields this tracker should use for each log entry.</p>
+                            </div>
+                        )}
+
+                        {tracker.logFields?.length > 0 && logs.length === 0 && (
                             <div className="empty-state">
                                 <h4>No logs yet</h4>
-                                <p>
-                                    Select a log type above and add the first entry for this tracker.
-                                </p>
+                                <p>Use the current tracker fields above and save the first entry.</p>
                             </div>
                         )}
 
@@ -534,7 +466,6 @@ const Tracker = () => {
                                 <table className="log-table">
                                     <thead>
                                         <tr>
-                                            <th scope="col">Log type</th>
                                             {logTableColumns.map((column) => (
                                                 <th key={column.key} scope="col">
                                                     {column.label}
@@ -549,21 +480,14 @@ const Tracker = () => {
                                     </thead>
                                     <tbody>
                                         {logs.map((log) => {
-                                            const logType = logTypesById[log.logTypeId];
-                                            const fields = logType?.fields || [];
                                             const createdAt = formatDateTime(
                                                 log.loggedAt || log.eventDate || log.dateCreated
                                             );
 
                                             return (
                                                 <tr key={log.id}>
-                                                    <td>
-                                                        <span className="log-table__cell">
-                                                            {logType?.name || "Custom log"}
-                                                        </span>
-                                                    </td>
                                                     {logTableColumns.map((column) => {
-                                                        const matchingField = fields.find(
+                                                        const matchingField = tracker.logFields.find(
                                                             (field) => field.key === column.key
                                                         );
 
@@ -621,7 +545,7 @@ const Tracker = () => {
                 </>
             )}
 
-            {isLogModalOpen && (activeLog ? logTypesById[activeLog.logTypeId] : selectedLogType) && (
+            {isLogModalOpen && tracker && tracker.logFields?.length > 0 && (
                 <div className="modal-backdrop" role="presentation" onClick={closeLogModal}>
                     <div
                         aria-modal="true"
@@ -632,12 +556,7 @@ const Tracker = () => {
                         <div className="modal__header">
                             <div>
                                 <p className="section-label">{activeLog ? "Edit log" : "New log"}</p>
-                                <h3>
-                                    {(activeLog
-                                        ? logTypesById[activeLog.logTypeId]
-                                        : selectedLogType
-                                    )?.name}
-                                </h3>
+                                <h3>{tracker.name}</h3>
                             </div>
                             <button
                                 aria-label="Close log form"
@@ -650,7 +569,7 @@ const Tracker = () => {
                         </div>
 
                         <form className="modal__form" onSubmit={handleSubmitLog}>
-                            {((activeLog ? logTypesById[activeLog.logTypeId] : selectedLogType)?.fields || []).map((field) => {
+                            {(tracker.logFields || []).map((field) => {
                                 if (field.type === "textarea") {
                                     return (
                                         <label className="field-group" key={field.id}>
@@ -738,11 +657,7 @@ const Tracker = () => {
                                     Cancel
                                 </button>
                                 <button className="button button--primary" disabled={isSubmitting} type="submit">
-                                    {isSubmitting
-                                        ? "Saving..."
-                                        : activeLog
-                                            ? "Save changes"
-                                            : "Save log"}
+                                    {isSubmitting ? "Saving..." : activeLog ? "Save changes" : "Save log"}
                                 </button>
                             </div>
                         </form>
@@ -754,7 +669,7 @@ const Tracker = () => {
                 <div className="modal-backdrop" role="presentation" onClick={closeTrackerModal}>
                     <div
                         aria-modal="true"
-                        className="modal"
+                        className="modal modal--wide"
                         onClick={(event) => event.stopPropagation()}
                         role="dialog"
                     >
@@ -784,6 +699,14 @@ const Tracker = () => {
                                 />
                             </label>
 
+                            <LogFieldsEditor
+                                description="These fields define the structure of every log entry in this tracker."
+                                emptyDescription="Add one or more fields so this tracker knows what each log should collect."
+                                fields={trackerDraft.logFields}
+                                onChange={(nextFields) => handleTrackerDraftChange("logFields", nextFields)}
+                                title="Manage this tracker's log fields"
+                            />
+
                             {trackerError && (
                                 <p className="status-message status-message--error">{trackerError}</p>
                             )}
@@ -800,6 +723,7 @@ const Tracker = () => {
                     </div>
                 </div>
             )}
+
             {confirmationDialog}
         </main>
     );

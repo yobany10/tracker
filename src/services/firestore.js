@@ -18,6 +18,15 @@ import {
 const TRACKERS_COLLECTION = "trackers";
 const LOG_TYPES_COLLECTION = "logTypes";
 const LOGS_COLLECTION = "logs";
+const TRACKER_LOG_FIELD_TYPES = new Set([
+    "text",
+    "textarea",
+    "number",
+    "date",
+    "time",
+    "checkbox",
+    "select"
+]);
 
 const assertRequired = (value, fieldName) => {
     if (!value) {
@@ -97,14 +106,22 @@ const mapSnapshot = (snapshot) => {
     return { id: snapshot.id, ...snapshot.data() };
 };
 
-const stripLegacyTrackerCategory = (tracker) => {
+const stripLegacyTrackerFields = (tracker) => {
     if (!tracker) {
         return null;
     }
 
-    const { category, ...trackerWithoutCategory } = tracker;
+    const { category, defaultLogTypeId, ...trackerWithoutLegacyFields } = tracker;
 
-    return trackerWithoutCategory;
+    void category;
+    void defaultLogTypeId;
+
+    return {
+        ...trackerWithoutLegacyFields,
+        logFields: Array.isArray(trackerWithoutLegacyFields.logFields)
+            ? trackerWithoutLegacyFields.logFields.map(normalizeLogTypeField)
+            : []
+    };
 };
 
 const normalizeTrackerPayload = (data = {}) => {
@@ -119,7 +136,9 @@ const normalizeTrackerPayload = (data = {}) => {
         name,
         icon: normalizeText(input.icon),
         color: normalizeText(input.color),
-        defaultLogTypeId: input.defaultLogTypeId || null,
+        logFields: Array.isArray(input.logFields)
+            ? input.logFields.map(normalizeLogTypeField)
+            : [],
         isArchived: Boolean(input.isArchived),
         settings: toPlainObject(input.settings),
         metadata: toPlainObject(input.metadata)
@@ -144,8 +163,10 @@ const normalizeTrackerUpdatePayload = (data = {}) => {
         payload.color = normalizeText(input.color);
     }
 
-    if (Object.prototype.hasOwnProperty.call(input, "defaultLogTypeId")) {
-        payload.defaultLogTypeId = input.defaultLogTypeId || null;
+    if (Object.prototype.hasOwnProperty.call(input, "logFields")) {
+        payload.logFields = Array.isArray(input.logFields)
+            ? input.logFields.map(normalizeLogTypeField)
+            : [];
     }
 
     if (Object.prototype.hasOwnProperty.call(input, "isArchived")) {
@@ -167,6 +188,7 @@ const normalizeLogTypeField = (field = {}) => {
     const input = toPlainObject(field);
     const label = normalizeText(input.label || input.name || input.key);
     const key = normalizeFieldKey(input.key || label || input.id);
+    const type = normalizeText(input.type, "text") || "text";
 
     assertRequired(label, "Log type field label");
 
@@ -174,7 +196,7 @@ const normalizeLogTypeField = (field = {}) => {
         id: input.id || createId(),
         key,
         label,
-        type: normalizeText(input.type, "text") || "text",
+        type: TRACKER_LOG_FIELD_TYPES.has(type) ? type : "text",
         required: Boolean(input.required),
         unitLabel: normalizeText(input.unitLabel),
         placeholder: normalizeText(input.placeholder),
@@ -332,6 +354,84 @@ export const logDoc = (trackerId, logId) => {
     return doc(db, TRACKERS_COLLECTION, trackerId, LOGS_COLLECTION, logId);
 };
 
+const getLegacyLogTypeById = async (trackerId, logTypeId) => {
+    if (!logTypeId) {
+        return null;
+    }
+
+    const sharedLogType = await getLogType(logTypeId);
+
+    if (sharedLogType) {
+        return sharedLogType;
+    }
+
+    if (!trackerId) {
+        return null;
+    }
+
+    const legacySnapshot = await getDoc(doc(db, TRACKERS_COLLECTION, trackerId, LOG_TYPES_COLLECTION, logTypeId));
+    return mapSnapshot(legacySnapshot);
+};
+
+const resolveLegacyTrackerLogFields = async (tracker) => {
+    if (!tracker) {
+        return [];
+    }
+
+    if (Array.isArray(tracker.logFields)) {
+        return tracker.logFields.map(normalizeLogTypeField);
+    }
+
+    let sourceLogType = null;
+
+    if (tracker.defaultLogTypeId) {
+        sourceLogType = await getLegacyLogTypeById(tracker.id, tracker.defaultLogTypeId);
+    }
+
+    if (!sourceLogType && tracker.id) {
+        const legacyLogTypes = await listSnapshots(legacyTrackerLogTypesCollection(tracker.id));
+        sourceLogType = legacyLogTypes[0] || null;
+    }
+
+    if (!sourceLogType && tracker.id) {
+        const existingLogs = await listTrackerLogs(tracker.id);
+        const firstReferencedLogTypeId = existingLogs.find((log) => log.logTypeId)?.logTypeId;
+
+        if (firstReferencedLogTypeId) {
+            sourceLogType = await getLegacyLogTypeById(tracker.id, firstReferencedLogTypeId);
+        }
+    }
+
+    return Array.isArray(sourceLogType?.fields)
+        ? sourceLogType.fields.map(normalizeLogTypeField)
+        : [];
+};
+
+const migrateTrackerToLogFields = async (tracker) => {
+    if (!tracker) {
+        return null;
+    }
+
+    const normalizedTracker = stripLegacyTrackerFields({
+        ...tracker,
+        logFields: await resolveLegacyTrackerLogFields(tracker)
+    });
+    const hasLegacyCategory = Object.prototype.hasOwnProperty.call(tracker, "category");
+    const hasLegacyDefaultLogTypeId = Object.prototype.hasOwnProperty.call(tracker, "defaultLogTypeId");
+    const hasStoredLogFields = Array.isArray(tracker.logFields);
+
+    if (!hasStoredLogFields || hasLegacyCategory || hasLegacyDefaultLogTypeId) {
+        await updateDoc(trackerDoc(tracker.id), {
+            logFields: normalizedTracker.logFields,
+            category: deleteField(),
+            defaultLogTypeId: deleteField(),
+            dateUpdated: serverTimestamp()
+        });
+    }
+
+    return normalizedTracker;
+};
+
 export const listUserTrackers = async (userId) => {
     if (!userId) {
         return [];
@@ -339,7 +439,7 @@ export const listUserTrackers = async (userId) => {
 
     const trackers = await listSnapshots(trackersCollection(), [where("ownerId", "==", userId)]);
 
-    return trackers.map(stripLegacyTrackerCategory);
+    return Promise.all(trackers.map(migrateTrackerToLogFields));
 };
 
 const migrateLegacyLogTypesForUser = async (userId) => {
@@ -378,7 +478,7 @@ const migrateLegacyLogTypesForUser = async (userId) => {
 
 export const getTracker = async (trackerId) => {
     const snapshot = await getDoc(trackerDoc(trackerId));
-    return stripLegacyTrackerCategory(mapSnapshot(snapshot));
+    return migrateTrackerToLogFields(mapSnapshot(snapshot));
 };
 
 export const createTracker = async (data = {}) => {
@@ -407,8 +507,14 @@ export const updateTracker = async (trackerId, data = {}) => {
 
 export const deleteTracker = async (trackerId) => {
     const existingLogs = await listTrackerLogs(trackerId);
+    const legacyLogTypes = await listSnapshots(legacyTrackerLogTypesCollection(trackerId));
 
     await Promise.all(existingLogs.map((currentLog) => deleteDoc(logDoc(trackerId, currentLog.id))));
+    await Promise.all(
+        legacyLogTypes.map((legacyLogType) =>
+            deleteDoc(doc(db, TRACKERS_COLLECTION, trackerId, LOG_TYPES_COLLECTION, legacyLogType.id))
+        )
+    );
 
     await deleteDoc(trackerDoc(trackerId));
 };

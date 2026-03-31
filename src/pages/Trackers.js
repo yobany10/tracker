@@ -2,11 +2,20 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 
+import LogFieldsEditor from "../components/LogFieldsEditor";
 import { auth } from "../firebase";
 import { createTracker, listUserTrackers } from "../services/firestore";
 
+const cloneLogFields = (fields = []) => {
+    return fields.map((field) => ({
+        ...field,
+        options: Array.isArray(field.options) ? [...field.options] : []
+    }));
+};
+
 const createTrackerDraft = () => ({
-    name: ""
+    name: "",
+    logFields: []
 });
 
 const sortTrackersByName = (items) => {
@@ -123,20 +132,23 @@ const Trackers = () => {
         setCreateTrackerError("");
 
         try {
-            const trackerId = await createTracker({
-                ownerId: userId,
-                name: trimmedName
-            });
-
-            const trackerRecord = {
-                id: trackerId,
+            const payload = {
                 ownerId: userId,
                 name: trimmedName,
-                isArchived: false,
-                defaultLogTypeId: null
+                logFields: cloneLogFields(trackerDraft.logFields)
             };
+            const trackerId = await createTracker(payload);
 
-            setTrackers((currentTrackers) => sortTrackersByName([...currentTrackers, trackerRecord]));
+            setTrackers((currentTrackers) =>
+                sortTrackersByName([
+                    ...currentTrackers,
+                    {
+                        ...payload,
+                        id: trackerId,
+                        isArchived: false
+                    }
+                ])
+            );
             resetCreateTrackerModalState();
         } catch (submitError) {
             setCreateTrackerError(submitError.message || "Unable to create the tracker.");
@@ -151,7 +163,7 @@ const Trackers = () => {
                 <div>
                     <p className="section-label">Trackers</p>
                     <h2>All trackers in one place</h2>
-                    <p>Review your full tracker library and create a new tracker without returning home.</p>
+                    <p>Each tracker now owns its own log schema, so configure fields where the logs actually live.</p>
                 </div>
 
                 <div className="page-header__actions">
@@ -208,27 +220,26 @@ const Trackers = () => {
                     {!isLoading && !error && trackers.length === 0 && (
                         <div className="empty-state">
                             <h4>No trackers yet</h4>
-                            <p>Create your first tracker to start organizing logs in dedicated spaces.</p>
+                            <p>Create your first tracker and define the log fields it should capture.</p>
                         </div>
                     )}
 
                     {!isLoading && !error && trackers.length > 0 && (
                         <div className="tracker-grid">
                             {trackers.map((tracker) => (
-                                <Link
-                                    key={tracker.id}
-                                    className="tracker-card"
-                                    to={`/trackers/${tracker.id}`}
-                                >
+                                <Link key={tracker.id} className="tracker-card" to={`/trackers/${tracker.id}`}>
                                     <div className="tracker-card__header">
                                         {tracker.isArchived && (
                                             <span className="tracker-card__badge tracker-card__badge--muted">
                                                 Archived
                                             </span>
                                         )}
+                                        <span className="tracker-card__badge">
+                                            {(tracker.logFields || []).length} fields
+                                        </span>
                                     </div>
                                     <h4>{tracker.name}</h4>
-                                    <p>Open this tracker to view logs and manage how you record activity.</p>
+                                    <p>Open this tracker to edit its fields and manage its logs.</p>
                                     <span className="tracker-card__cta">Open tracker</span>
                                 </Link>
                             ))}
@@ -241,7 +252,7 @@ const Trackers = () => {
                 <div className="modal-backdrop" onClick={closeCreateTrackerModal} role="presentation">
                     <div
                         aria-modal="true"
-                        className="modal"
+                        className="modal modal--wide"
                         onClick={(event) => event.stopPropagation()}
                         role="dialog"
                     >
@@ -270,6 +281,14 @@ const Trackers = () => {
                                     onChange={(event) => updateTrackerDraft("name", event.target.value)}
                                 />
                             </label>
+
+                            <LogFieldsEditor
+                                description="Add the fields this tracker should use whenever a new log entry is created."
+                                emptyDescription="Add fields now, or create the tracker first and come back later to configure them."
+                                fields={trackerDraft.logFields}
+                                onChange={(nextFields) => updateTrackerDraft("logFields", nextFields)}
+                                title="Define this tracker's log fields"
+                            />
 
                             {createTrackerError && (
                                 <p className="status-message status-message--error">{createTrackerError}</p>
